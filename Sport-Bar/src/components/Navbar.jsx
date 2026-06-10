@@ -89,9 +89,9 @@ const Navbar = () => {
                       <ListItemButton component={RouterLink} to="/expenses/store" onClick={handleDrawerToggle} sx={{ pl: 4 }}>
                         <ListItemIcon><StoreIcon fontSize="small" /></ListItemIcon><ListItemText primary="Gastos Tienda" />
                       </ListItemButton>
-                      <ListItemButton component={RouterLink} to="/expenses/warehouse" onClick={handleDrawerToggle} sx={{ pl: 4 }}>
+                      {/* <ListItemButton component={RouterLink} to="/expenses/warehouse" onClick={handleDrawerToggle} sx={{ pl: 4 }}>
                         <ListItemIcon><WarehouseIcon fontSize="small" /></ListItemIcon><ListItemText primary="Gastos Bodega" />
-                      </ListItemButton>
+                      </ListItemButton> */}
                       <ListItemButton component={RouterLink} to="/expenses/payroll" onClick={handleDrawerToggle} sx={{ pl: 4 }}>
                         <ListItemIcon><GroupsIcon fontSize="small" /></ListItemIcon><ListItemText primary="Nómina" />
                       </ListItemButton>
@@ -179,7 +179,7 @@ const Navbar = () => {
                       </Button>
                       <Menu anchorEl={expensesAnchorEl} open={openExpensesDesktop} onClose={handleExpensesClose} onClick={handleExpensesClose} PaperProps={{ elevation: 3, sx: { mt: 1, minWidth: 180 } }}>
                         <MenuItem component={RouterLink} to="/expenses/store"><ListItemIcon><StoreIcon fontSize="small" /></ListItemIcon> Gastos Tienda</MenuItem>
-                        <MenuItem component={RouterLink} to="/expenses/warehouse"><ListItemIcon><WarehouseIcon fontSize="small" /></ListItemIcon> Gastos Bodega</MenuItem>
+                        {/* <MenuItem component={RouterLink} to="/expenses/warehouse"><ListItemIcon><WarehouseIcon fontSize="small" /></ListItemIcon> Gastos Bodega</MenuItem> */}
                         <Divider />
                         <MenuItem component={RouterLink} to="/expenses/payroll"><ListItemIcon><GroupsIcon fontSize="small" /></ListItemIcon> Nómina</MenuItem>
                       </Menu>

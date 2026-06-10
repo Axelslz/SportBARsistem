@@ -113,55 +113,7 @@ const UsuariosTab = () => {
   );
 };
 
-const TicketTab = () => {
-  const [form, setForm] = useState({ storeName: 'LA BODEGA', slogan: 'Materiales y Galvanizados', address: '1A PTE SUR S/N - COL EL JOBO, TUXTLA GTZ', phone: '961 182 1879', email: 'contacto@labodega.com', footerMessage: '** GRACIAS POR SU COMPRA **\nNO SE ACEPTAN DEVOLUCIONES' });
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  return (
-  <Box sx={{ p: 3 }}>
-    <Typography variant="h6" gutterBottom sx={{ color: '#1565C0', fontWeight: 'bold' }}>Información del Ticket</Typography>
-    <Grid container spacing={3}>
-      <Grid item xs={12} sm={6}><TextField label="Nombre de la Tienda" name="storeName" fullWidth value={form.storeName} onChange={handleChange}/></Grid>
-      <Grid item xs={12} sm={6}><TextField label="Frase o Slogan" name="slogan" fullWidth value={form.slogan} onChange={handleChange}/></Grid>
-      <Grid item xs={12}><TextField label="Dirección Completa" name="address" fullWidth multiline rows={2} value={form.address} onChange={handleChange}/></Grid>
-      <Grid item xs={12} sm={6}><TextField label="Teléfono / WhatsApp" name="phone" fullWidth value={form.phone} onChange={handleChange}/></Grid>
-      <Grid item xs={12} sm={6}><TextField label="Correo Electrónico" name="email" fullWidth value={form.email} onChange={handleChange}/></Grid>
-      <Grid item xs={12}><TextField label="Mensaje Final" name="footerMessage" fullWidth multiline rows={2} value={form.footerMessage} onChange={handleChange}/></Grid>
-      <Grid item xs={12} sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" size="large" startIcon={<SaveIcon />} onClick={() => alert("Guardado")} sx={{ px: 4, borderRadius: 2 }}>Guardar Configuración</Button></Grid>
-    </Grid>
-  </Box>
-  );
-};
 
-const PrinterTab = () => {
-  const [paperSize, setPaperSize] = useState('80');
-  const [showLogo, setShowLogo] = useState(true);
-  return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom sx={{ color: '#1565C0', fontWeight: 'bold' }}>Configuración de Impresión</Typography>
-      <Grid container spacing={4}>
-        <Grid item xs={12} md={6}>
-          <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-            <FormControl>
-              <FormLabel sx={{ fontWeight: 'bold', mb: 1 }}>Tamaño del Papel</FormLabel>
-              <RadioGroup value={paperSize} onChange={(e) => setPaperSize(e.target.value)}>
-                <FormControlLabel value="80" control={<Radio />} label="80mm (Estándar)" sx={{ mb: 1 }}/>
-                <FormControlLabel value="58" control={<Radio />} label="58mm (Pequeño)" />
-              </RadioGroup>
-            </FormControl>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 2, color: 'text.secondary' }}>PREFERENCIAS DE CAJA</Typography>
-            <List disablePadding>
-              <ListItem disableGutters><ListItemText primary="Mostrar Logo en Ticket" /><Switch edge="end" checked={showLogo} onChange={(e) => setShowLogo(e.target.checked)} /></ListItem>
-            </List>
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
-};
 
 const Settings = () => {
   const { user } = useAuth();
@@ -177,12 +129,8 @@ const Settings = () => {
       <Paper sx={{ width: '100%', mb: 2 }}>
         <Tabs value={tabIndex} onChange={(e, val) => setTabIndex(val)} indicatorColor="primary" textColor="primary">
           <Tab icon={<PeopleIcon />} iconPosition="start" label="Usuarios" />
-          <Tab icon={<StoreIcon />} iconPosition="start" label="Datos Tienda" />
-          <Tab icon={<ReceiptIcon />} iconPosition="start" label="Impresora" />
         </Tabs>
         {tabIndex === 0 && <UsuariosTab />}
-        {tabIndex === 1 && <TicketTab />}
-        {tabIndex === 2 && <PrinterTab />}
       </Paper>
     </Container>
   );
