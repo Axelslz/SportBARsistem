@@ -30,10 +30,15 @@ export default function SalesHistory({ open, onClose, sales }) {
 
     const isSplitNumber = splitIndex !== null;
     const ticketTotal = isSplitNumber ? (parseFloat(sale.total) / ways) : parseFloat(sale.total);
+    
+    // 🌟 NUEVO: Extraemos la propina y la dividimos si es cuenta separada
+    const rawTip = sale.tip ? parseFloat(sale.tip) : 0;
+    const ticketTip = isSplitNumber ? (rawTip / ways) : rawTip;
+    const grandTotal = ticketTotal + ticketTip;
 
     const realAmountPaid = isSplitNumber 
-      ? (sale.amountPaid ? (parseFloat(sale.amountPaid) / ways) : ticketTotal)
-      : (sale.amountPaid !== undefined && sale.amountPaid !== null ? parseFloat(sale.amountPaid) : parseFloat(sale.total));
+      ? (sale.amountPaid ? (parseFloat(sale.amountPaid) / ways) : grandTotal)
+      : (sale.amountPaid !== undefined && sale.amountPaid !== null ? parseFloat(sale.amountPaid) : grandTotal);
 
     const realChange = isSplitNumber
       ? (sale.change ? (parseFloat(sale.change) / ways) : 0)
@@ -46,10 +51,11 @@ export default function SalesHistory({ open, onClose, sales }) {
       paymentMethod: sale.paymentMethod,
       seller: sale.seller,
       total: ticketTotal,
+      tip: ticketTip, // 🌟 NUEVO: Le pasamos la propina a printTicket.js
       amountPaid: realAmountPaid, 
       change: realChange,
       splitWays: ways, 
-      splitAmount: isSplitNumber ? ticketTotal : (sale.splitAmount || sale.total), 
+      splitAmount: isSplitNumber ? grandTotal : (sale.splitAmount || grandTotal), 
       items: itemsList.map(item => ({
         name: item.productName || item.name,
         quantity: item.quantity,
@@ -64,6 +70,7 @@ export default function SalesHistory({ open, onClose, sales }) {
     };
 
     try {
+      // 🌟 MODIFICADO: Generamos el HTML usando la función principal pero en modo "vista previa"
       const html = await generateTicketHTML(saleData, customerInfo);
       setTicketHTML(html);
     } catch (error) {
@@ -178,7 +185,6 @@ export default function SalesHistory({ open, onClose, sales }) {
                             {itemsList.length > 0 && (
                               <Box display="flex" alignItems="center" gap={0.5}>
                                 {!isSplit ? (
-                                  // --- UNIFICACIÓN VISUAL: Ojito Azul para ventas normales ---
                                   <IconButton 
                                     size="small" 
                                     color="primary" 
@@ -193,7 +199,6 @@ export default function SalesHistory({ open, onClose, sales }) {
                                     <Visibility sx={{ fontSize: '0.85rem' }} />
                                   </IconButton>
                                 ) : (
-                                  // Ojitos Azules con número identificador para las cuentas divididas
                                   Array.from({ length: ways }).map((_, idx) => (
                                     <IconButton 
                                       key={idx}
@@ -222,7 +227,7 @@ export default function SalesHistory({ open, onClose, sales }) {
                           </Box>
                         </TableCell>
                         <TableCell align="right" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-                          ${parseFloat(sale.total).toFixed(2)}
+                          ${(parseFloat(sale.total) + (sale.tip ? parseFloat(sale.tip) : 0)).toFixed(2)}
                         </TableCell>
                       </TableRow>
                     );
@@ -244,7 +249,7 @@ export default function SalesHistory({ open, onClose, sales }) {
         fullWidth
       >
         <DialogTitle sx={{ textAlign: 'center', fontWeight: 'bold', pb: 1 }}>
-          Vista Previa
+          Reimpresión de Ticket
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, height: '450px', backgroundColor: '#f5f5f5' }}>
           {ticketHTML ? (
@@ -272,7 +277,7 @@ export default function SalesHistory({ open, onClose, sales }) {
             disabled={!ticketHTML}
             sx={{ flex: 1 }}
           >
-            Imprimir
+            Imprimir Copia
           </Button>
         </DialogActions>
       </Dialog>

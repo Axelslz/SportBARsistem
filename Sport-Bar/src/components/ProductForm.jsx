@@ -17,9 +17,7 @@ const CATEGORIAS_BAR = [
   { name: 'Licores', icon: <Liquor fontSize="small" sx={{ mr: 1, color: goldColor }}/> },
   { name: 'Coctelería', icon: <LocalBar fontSize="small" sx={{ mr: 1, color: goldColor }}/> },
   { name: 'Refrescos y Aguas', icon: <Coffee fontSize="small" sx={{ mr: 1, color: goldColor }}/> },
-  { name: 'Alimentos', icon: <LocalDining fontSize="small" sx={{ mr: 1, color: goldColor }}/> },
   { name: 'Botanas', icon: <Fastfood fontSize="small" sx={{ mr: 1, color: goldColor }}/> },
-  { name: 'Insumos de Barra', icon: <Kitchen fontSize="small" sx={{ mr: 1, color: goldColor }}/> },
   { name: 'Otros', icon: <Category fontSize="small" sx={{ mr: 1, color: goldColor }}/> }
 ];
 
@@ -146,7 +144,7 @@ export default function ProductForm({ open, handleClose, onSave, initialData }) 
                   inputProps={{ min: 0, step: "any" }}
                   InputProps={{
                     startAdornment: <InputAdornment position="start"><Typography variant="h6" sx={{ color: '#666', fontWeight: 'bold' }}>$</Typography></InputAdornment>,
-                    sx: { fontWeight: 'bold', fontSize: '1.3rem', borderRadius: 2, bgcolor: '#f5f5f5' }
+                    sx: { fontWeight: 'bold', fontSize: '1.3rem', borderRadius: 2, bgcolor: '' }
                   }}
                 />
               </Grid>

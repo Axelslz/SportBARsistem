@@ -78,7 +78,6 @@ export default function Inventory() {
   });
 
   const totalItems = products.length;
-  // Solo contamos agotados/resurtir si NO son botanas o alimentos (esos no tienen stock)
   const outOfStockItems = products.filter(p => p.stock <= 0 && p.category !== 'Botanas' && p.category !== 'Alimentos').length;
   const lowStockItems = products.filter(p => p.stock > 0 && p.stock <= 10 && p.category !== 'Botanas' && p.category !== 'Alimentos').length;
 

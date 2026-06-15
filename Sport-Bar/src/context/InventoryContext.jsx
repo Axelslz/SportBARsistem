@@ -9,20 +9,28 @@ import {
 } from '../services/productService';
 import { createSaleService, getSalesHistoryService } from '../services/saleService';
 
+// 🔥 NUEVO: Detecta automáticamente si está en Producción o Desarrollo
+const API_URL = import.meta.env.MODE === 'production' 
+  ? 'https://backsportbarsistem.onrender.com/api/sales/cash' 
+  : 'http://localhost:5000/api/sales/cash';
+
 const InventoryContext = createContext();
 
 export const InventoryProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]); 
+  const [cashDrawer, setCashDrawer] = useState(null); 
   const { isAuthenticated } = useAuth(); 
 
   useEffect(() => {
     if (isAuthenticated) {
       loadProducts();
       loadSales(); 
+      loadActiveCashSession(); 
     } else {
       setProducts([]);
       setSales([]);
+      setCashDrawer(null);
     }
   }, [isAuthenticated]); 
 
@@ -44,20 +52,57 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  // 🔥 CORREGIDO: Uso de la variable API_URL dinámica
+  const loadActiveCashSession = async () => {
+    try {
+      const response = await fetch(`${API_URL}/active`); 
+      const data = await response.json();
+      setCashDrawer(data); 
+    } catch (error) {
+      console.error("Error cargando caja activa:", error);
+    }
+  };
+
+  // 🔥 CORREGIDO: Uso de la variable API_URL dinámica
+  const startCashSession = async (initialCash) => {
+    try {
+      await fetch(`${API_URL}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialCash: parseFloat(initialCash) })
+      });
+      await loadActiveCashSession();
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
+  };
+
+  // 🔥 CORREGIDO: Uso de la variable API_URL dinámica
+  const closeCashSession = async () => {
+    try {
+      await fetch(`${API_URL}/close`, { method: 'POST' });
+      await loadActiveCashSession();
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
+  };
+
   const addProduct = async (productData) => { 
       try {
         const savedProduct = await createProductService(productData);
         
         setProducts(prevProducts => {
             const alreadyExists = prevProducts.find(p => p.id === savedProduct.id);
-            
             if (alreadyExists) {
                 return prevProducts.map(p => p.id === savedProduct.id ? savedProduct : p);
             } else {
                 return [...prevProducts, savedProduct];
             }
         });
-        
         return true;
       } catch (error) { 
         console.error(error); 
@@ -79,10 +124,8 @@ export const InventoryProvider = ({ children }) => {
       } catch (error) { console.error(error); }
   };
     
-  // --- MODIFICADO: Agregamos amountPaid y change al final de los parámetros ---
-  const addSale = async (cart, total, customer, seller, paymentMethod, ticketNumber, amountPaid, change) => {
+  const addSale = async (cart, total, customer, seller, paymentMethod, ticketNumber, amountPaid, change, tip = 0) => {
     try { 
-        // Armamos el objeto saleData inyectando cuánto pagó y su cambio para enviarlo al backend
         const saleData = { 
           cart, 
           total, 
@@ -90,17 +133,17 @@ export const InventoryProvider = ({ children }) => {
           seller, 
           paymentMethod, 
           ticketNumber,
-          amountPaid: amountPaid !== undefined ? amountPaid : total, // Respaldo si viene vacío
-          change: change !== undefined ? change : 0 
+          amountPaid: amountPaid !== undefined ? amountPaid : total, 
+          change: change !== undefined ? change : 0,
+          tip: parseFloat(tip) 
         };
 
         await createSaleService(saleData); 
 
-        // Refrescamos productos e historial para mantener la app sincronizada
         await loadProducts(); 
         await loadSales(); 
+        await loadActiveCashSession(); 
 
-        // Retorna true directo para sincronizar con el "if (success)" de tu POS.jsx
         return true; 
     } catch (error) {
         console.error("Error al procesar venta:", error);
@@ -124,6 +167,10 @@ export const InventoryProvider = ({ children }) => {
     <InventoryContext.Provider value={{ 
       products, 
       sales, 
+      cashDrawer,
+      startCashSession,
+      closeCashSession,
+      loadActiveCashSession,
       addProduct, 
       updateProduct, 
       deleteProduct, 

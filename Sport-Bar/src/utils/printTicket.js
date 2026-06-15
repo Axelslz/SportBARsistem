@@ -26,9 +26,33 @@ const getTicketHTML = (logoBase64, saleData, customerInfo, copyLabel) => {
   const sellerName = saleData.seller || "BARRA"; 
   const folioDisplay = saleData.ticketNumber ? `${saleData.ticketNumber}` : `F-${saleData.id || '---'}`;
   
-  // Variables para pago y cambio
-  const amountPaidDisplay = saleData.amountPaid !== undefined ? formatCurrency(saleData.amountPaid) : formatCurrency(saleData.total);
+  const isSplit = saleData.isSplit || false;
+  const splitTotal = saleData.splitTotal || saleData.total;
+
+  // Propina real recibida desde el POS
+  const tipAmount = saleData.tip ? parseFloat(saleData.tip) : 0;
+  const grandTotal = isSplit ? (splitTotal + tipAmount) : (saleData.total + tipAmount);
+  
+  const amountPaidDisplay = saleData.amountPaid !== undefined ? formatCurrency(saleData.amountPaid) : formatCurrency(grandTotal);
   const changeDisplay = saleData.change !== undefined ? formatCurrency(saleData.change) : formatCurrency(0);
+  
+  // Variables para la Pre-Cuenta (Lógica Dinámica de Propina)
+  const isPreAccount = copyLabel === "PRE-CUENTA";
+  const baseAmountForTip = isSplit ? splitTotal : saleData.total;
+  
+  let preAccountTipAmount = 0;
+  let preAccountTipLabel = "";
+
+  // 🔥 NUEVO: Si seleccionaste propina en el POS, usa esa. Si no, sugiere el 10%.
+  if (tipAmount > 0) {
+    preAccountTipAmount = tipAmount;
+    preAccountTipLabel = "PROPINA SELECCIONADA:";
+  } else {
+    preAccountTipAmount = baseAmountForTip * 0.10;
+    preAccountTipLabel = "PROPINA OPCIONAL (10%):";
+  }
+  
+  const totalWithPreAccountTip = baseAmountForTip + preAccountTipAmount;
 
   return `
     <html>
@@ -36,84 +60,37 @@ const getTicketHTML = (logoBase64, saleData, customerInfo, copyLabel) => {
         <title>Ticket Cazadores Sport Bar</title>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          
-          @page { 
-            size: 80mm auto; 
-            margin: 0mm;     
-          }
-
+          @page { size: 80mm auto; margin: 0mm; }
           body { 
-            font-family: 'Arial', sans-serif; 
-            font-size: 11px; 
-            width: 74mm; 
-            margin: 0 auto; 
-            padding: 2mm;   
-            color: black; 
-            text-transform: uppercase; 
-            line-height: 1.2; 
-            background-color: #fff; 
+            font-family: 'Arial', sans-serif; font-size: 11px; width: 74mm; 
+            margin: 0 auto; padding: 2mm; color: black; 
+            text-transform: uppercase; line-height: 1.2; background-color: #fff; 
           }
-
           .center { text-align: center; }
-          .right { text-align: right; }
-          .left { text-align: left; }
           .bold { font-weight: bold; }
-          
           .header { margin-bottom: 5px; width: 100%; }
-          .logo-img { 
-            width: 80px; 
-            height: auto; 
-            display: block; 
-            margin: 0 auto 5px auto; 
-            filter: grayscale(100%); 
-          }
+          .logo-img { width: 80px; height: auto; display: block; margin: 0 auto 5px auto; filter: grayscale(100%); }
           .title { font-size: 14px; font-weight: 900; margin: 2px 0; }
-          .subtitle { font-size: 10px; font-weight: bold; margin-bottom: 3px; }
           .address-shop { font-size: 9px; margin-bottom: 5px;}
-
           .divider-double { border-top: 1px double #000; border-bottom: 1px solid #000; height: 3px; margin: 5px 0; }
           .divider-dashed { border-top: 1px dashed #000; margin: 5px 0; }
-
           .client-info { margin: 8px 0; font-size: 11px; text-align: center; }
           .client-details { font-weight: bold; font-size: 12px; display: block; margin-top: 2px;}
-
           .folio-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 12px; }
           .meta-info { font-size: 9px; margin-bottom: 5px; display: flex; justify-content: space-between; }
-
-          table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-top: 5px; 
-            table-layout: fixed; 
-          }
+          table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
           th { border-top: 1px solid #000; border-bottom: 1px solid #000; font-size: 9px; padding: 2px 0; text-align: left;}
           td { padding: 4px 0 2px 0; vertical-align: top; font-size: 10px; border-bottom: 1px dotted #ccc; }
           tr:last-child td { border-bottom: none; }
-          
           .col-qty { width: 15%; text-align: center; font-weight: bold; font-size: 11px; }
-          .col-desc { 
-            width: 55%; 
-            text-align: left; 
-            padding-right: 2px;
-            white-space: normal; 
-            overflow-wrap: break-word; 
-          }
+          .col-desc { width: 55%; text-align: left; padding-right: 2px; white-space: normal; overflow-wrap: break-word; }
           .col-price { width: 30%; text-align: right; font-weight: bold; font-size: 11px; }
-          
-          .unit-price { 
-            display: block; 
-            font-size: 9px; 
-            font-weight: normal; 
-            color: #333; 
-            margin-top: 2px; 
-          }
-
+          .unit-price { display: block; font-size: 9px; font-weight: normal; color: #333; margin-top: 2px; }
           .total-section { text-align: right; margin-top: 10px; border-top: 1px solid #000; padding-top: 5px;}
-          .total-amount { font-size: 16px; font-weight: 900; }
+          .total-amount { font-size: 15px; font-weight: 900; margin-top: 3px; }
           .payment-details { font-size: 10px; font-weight: bold; margin-top: 4px; }
-
           .footer { margin-top: 15px; font-size: 11px; }
-          .copy-label { font-size: 10px; margin-bottom: 5px; }
+          .copy-label { font-size: 12px; font-weight: bold; margin-bottom: 5px; }
         </style>
       </head>
       <body>
@@ -167,10 +144,35 @@ const getTicketHTML = (logoBase64, saleData, customerInfo, copyLabel) => {
         </table>
         
         <div class="total-section">
-          <div class="total-amount">TOTAL: ${formatCurrency(saleData.total)}</div>
-          <div class="payment-details">MÉTODO: ${paymentType}</div>
-          <div class="payment-details">PAGÓ CON: ${amountPaidDisplay}</div>
-          <div class="payment-details">CAMBIO: ${changeDisplay}</div>
+          ${isPreAccount ? `
+            ${isSplit ? `
+              <div style="font-size: 11px; font-weight: bold; color: #555;">TOTAL ENTERO MESA: ${formatCurrency(saleData.total)}</div>
+              <div class="total-amount" style="font-size: 13px; margin-top: 4px; border-top: 1px dashed #ccc; padding-top: 4px;">TOTAL DIVIDIDO: ${formatCurrency(splitTotal)}</div>
+              <div style="font-size: 11px; font-weight: bold; margin-top: 6px;">${preAccountTipLabel} ${formatCurrency(preAccountTipAmount)}</div>
+              <div class="total-amount" style="font-size: 16px; margin-top: 2px; color: #000;">TOTAL CON PROPINA: ${formatCurrency(totalWithPreAccountTip)}</div>
+            ` : `
+              <div class="total-amount" style="font-size: 14px;">TOTAL MESA: ${formatCurrency(saleData.total)}</div>
+              <div style="font-size: 12px; font-weight: bold; margin-top: 8px;">${preAccountTipLabel} ${formatCurrency(preAccountTipAmount)}</div>
+              <div class="total-amount" style="font-size: 16px; margin-top: 2px;">TOTAL CON PROPINA: ${formatCurrency(totalWithPreAccountTip)}</div>
+            `}
+            <div class="payment-details center" style="margin-top: 12px; border-top: 1px dashed #ccc; padding-top: 5px;">ESTE DOCUMENTO NO ES UN COMPROBANTE DE PAGO</div>
+          ` : `
+            ${isSplit ? `
+              <div style="font-size: 11px; font-weight: bold; color: #555;">TOTAL ENTERO MESA: ${formatCurrency(saleData.total)}</div>
+              <div class="total-amount" style="font-size: 13px; margin-top: 4px; border-top: 1px dashed #ccc; padding-top: 4px;">TOTAL DIVIDIDO: ${formatCurrency(splitTotal)}</div>
+              ${tipAmount > 0 ? `<div style="font-size: 11px; font-weight: bold; margin-top: 4px;">PROPINA OPCIONAL: ${formatCurrency(tipAmount)}</div>` : ''}
+              <div class="total-amount" style="font-size: 16px; margin-top: 2px;">TOTAL PAGADO: ${formatCurrency(grandTotal)}</div>
+            ` : `
+              ${tipAmount > 0 ? `
+                <div style="font-size: 12px; font-weight: bold;">CONSUMO: ${formatCurrency(saleData.total)}</div>
+                <div style="font-size: 12px; font-weight: bold;">PROPINA: ${formatCurrency(tipAmount)}</div>
+              ` : ''}
+              <div class="total-amount">TOTAL: ${formatCurrency(grandTotal)}</div>
+            `}
+            <div class="payment-details">MÉTODO: ${paymentType}</div>
+            <div class="payment-details">PAGÓ CON: ${amountPaidDisplay}</div>
+            <div class="payment-details">CAMBIO: ${changeDisplay}</div>
+          `}
         </div>
         
         <div class="footer center bold">
@@ -212,10 +214,94 @@ const triggerPrintJob = (htmlContent) => {
 
 export const printTicket = async (saleData, customerInfo) => {
   const logoBase64 = await convertImageToBase64(LOGO_BAR);
-  
-  // Imprimir una sola copia para el cliente (un Bar no suele imprimir dos copias por cuenta)
   const htmlCliente = getTicketHTML(logoBase64, saleData, customerInfo, "TICKET DE CONSUMO");
   await triggerPrintJob(htmlCliente);
+};
+
+export const printPreAccount = async (saleData, customerInfo) => {
+  const logoBase64 = await convertImageToBase64(LOGO_BAR);
+  const htmlPre = getTicketHTML(logoBase64, saleData, customerInfo, "PRE-CUENTA");
+  await triggerPrintJob(htmlPre);
+};
+
+export const printCashDrawerClosing = async (totalsData, username = "CAJERO") => {
+  const logoBase64 = await convertImageToBase64(LOGO_BAR);
+  const formatCurrency = (amount) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+
+  const htmlContent = `
+    <html>
+      <head>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          @page { size: 80mm auto; margin: 0mm; }
+          body { font-family: 'Arial', sans-serif; font-size: 12px; width: 74mm; margin: 0 auto; padding: 2mm; color: black; text-transform: uppercase; line-height: 1.4; background-color: #fff; }
+          .center { text-align: center; }
+          .logo-img { width: 80px; height: auto; display: block; margin: 0 auto 5px auto; filter: grayscale(100%); }
+          .divider { border-top: 1px dashed #000; margin: 10px 0; }
+          .bold { font-weight: bold; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          ${logoBase64 ? `<img src="${logoBase64}" class="logo-img" />` : ''}
+          <h2 style="margin: 0;">CAZADORES SPORT BAR</h2>
+          <h3 style="margin: 5px 0;">*** CORTE DE CAJA ***</h3>
+          <p style="font-size: 10px;">FECHA: ${new Date().toLocaleString('es-MX')}</p>
+          <p style="font-size: 10px;">REALIZADO POR: ${username}</p>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="row bold" style="font-size: 14px;">
+          <span>FONDO INICIAL:</span>
+          <span>${formatCurrency(totalsData.initialCash)}</span>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="bold" style="margin-bottom: 5px;">INGRESOS POR VENTAS:</div>
+        <div class="row">
+          <span>EFECTIVO:</span>
+          <span>${formatCurrency(totalsData.efectivo)}</span>
+        </div>
+        <div class="row">
+          <span>TARJETA:</span>
+          <span>${formatCurrency(totalsData.tarjeta)}</span>
+        </div>
+        <div class="row">
+          <span>TRANSFERENCIA:</span>
+          <span>${formatCurrency(totalsData.transferencia)}</span>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="row bold" style="font-size: 14px;">
+          <span>TOTAL CONSUMOS:</span>
+          <span>${formatCurrency(totalsData.totalConsumo)}</span>
+        </div>
+        <div class="row bold" style="font-size: 14px; color: #333;">
+          <span>TOTAL PROPINAS:</span>
+          <span>${formatCurrency(totalsData.totalPropinas)}</span>
+        </div>
+        
+        <div class="divider" style="border-top: 2px solid #000;"></div>
+        
+        <div class="center" style="margin-top: 15px;">
+          <div style="font-size: 12px; margin-bottom: 5px;">EFECTIVO TOTAL ESPERADO EN CAJA:</div>
+          <div style="font-size: 20px; font-weight: 900;">${formatCurrency(totalsData.efectivoEsperadoEnCaja)}</div>
+          <div style="font-size: 9px; margin-top: 2px;">(Fondo Inicial + Ventas en Efectivo)</div>
+        </div>
+        
+        <br/><br/><br/>
+        <div class="center">
+          <p>___________________________________</p>
+          <p style="font-size: 10px; margin-top: 3px;">FIRMA ENCARGADO / CAJERO</p>
+        </div>
+      </body>
+    </html>
+  `;
+  await triggerPrintJob(htmlContent);
 };
 
 export const generateTicketHTML = async (saleData, customerInfo) => {

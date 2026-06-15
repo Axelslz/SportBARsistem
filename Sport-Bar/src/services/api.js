@@ -4,7 +4,7 @@ const isLocal = window.location.hostname === 'localhost' || window.location.host
 
 const URL_BACKEND = isLocal 
   ? 'http://localhost:5000/api' 
-  : 'https://systeminventorylabodegaback.onrender.com/api';
+  : 'https://backsportbarsistem.onrender.com/api';
 
 console.log("Conectando a:", URL_BACKEND); 
 

@@ -6,330 +6,347 @@ import {
   FormControl, InputLabel, Select, MenuItem,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
   Snackbar, Alert, Card, CardActionArea, CardContent, ToggleButtonGroup, ToggleButton, Chip,
-  Tabs, Tab 
+  Tabs, Tab, InputAdornment 
 } from '@mui/material';
 import { 
   Delete, ReceiptLong, History, CheckCircle, 
   TableBar, CallSplit, Save, AddCircleOutline, RemoveCircleOutline, Payments, CreditCard, Cancel,
-  Restaurant, LocalBar 
+  Restaurant, LocalBar, AccountBalanceWallet, Print, LockOpen, Lock, PointOfSale
 } from '@mui/icons-material';
 import { useInventory } from '../context/InventoryContext';
 import SalesHistory from '../components/SalesHistory';
-import { printTicket, generateTicketHTML } from '../utils/printTicket';
-import { getUsersRequest } from '../services/authService';
+import { printTicket, printPreAccount, generateTicketHTML, printCashDrawerClosing } from '../utils/printTicket';
 import { useThemeMode } from '../context/ThemeContext'; 
 
-const LISTA_MESAS = ['BARRA', 'MESA 1', 'MESA 2', 'MESA 3', 'MESA 4', 'MESA 5', 'VIP'];
+import { useAuth } from '../context/AuthContext';
+import { saveActiveTableService, getActiveTablesService, clearActiveTableService } from '../services/saleService';
+
+const LISTA_MESAS = ['MESA 1', 'MESA 2', 'MESA 3', 'MESA 4', 'MESA 5', 'MESA 6', 'MESA 7', 'MESA 8', 'MESA 9', 'MESA 10'];
 
 export default function POS() {
-  const { products, addSale, sales } = useInventory();
+  const { products, addSale, sales, cashDrawer, startCashSession, closeCashSession } = useInventory();
+  const { user } = useAuth(); // 🔥 Obtenemos al usuario que inició sesión
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md')); 
   const { mode } = useThemeMode();
 
   const [searchTerm, setSearchTerm] = useState('');
-  // Cambiamos el estado inicial a 0 (0: Botanas, 1: Bebidas) ya que eliminamos "Todo"
   const [menuTab, setMenuTab] = useState(0); 
+  const [subCategory, setSubCategory] = useState('Cervezas');
+  
+  const [mesasActivas, setMesasActivas] = useState({});
   const [cart, setCart] = useState([]);
+
+  const [tipMode, setTipMode] = useState(''); 
+  const [tipAmount, setTipAmount] = useState(''); 
+  const [openStartBox, setOpenStartBox] = useState(false);
+  const [initialCashInput, setInitialCashInput] = useState('');
+  const [openCloseBox, setOpenCloseBox] = useState(false);
+
+  const [selectedTable, setSelectedTable] = useState('BARRA');
+  
   const [total, setTotal] = useState(0); 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
-  const [vendedoresList, setVendedoresList] = useState([]);
-  const [seller, setSeller] = useState('');
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false); 
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' }); 
 
-  // Estados del Bar
-  const [selectedTable, setSelectedTable] = useState('BARRA');
-  const [mesasActivas, setMesasActivas] = useState({});
+  const sellerName = user?.username || user?.name || 'CAJA / MESERO';
+
   const [paymentMethod, setPaymentMethod] = useState('EFECTIVO'); 
   const [splitPayments, setSplitPayments] = useState(['']); 
+  const [splitMethods, setSplitMethods] = useState(['EFECTIVO']); 
 
-  // Estados para manejar la división de cuenta
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
   const [tempSplitWays, setTempSplitWays] = useState(2); 
   const [activeSplit, setActiveSplit] = useState(1); 
+  const [portionDialog, setPortionDialog] = useState({ open: false, product: null });
+  const [flippedCardId, setFlippedCardId] = useState(null);
+
+  const fetchActiveTables = async () => {
+    try {
+      const data = await getActiveTablesService();
+      const tableMap = {};
+      data.forEach(t => { tableMap[t.tableName] = { cart: t.cart, waiter: t.waiter }; });
+      setMesasActivas(tableMap);
+    } catch (error) { console.error("Error obteniendo mesas activas:", error); }
+  };
 
   useEffect(() => {
-    const fetchSellers = async () => {
-      try {
-        const lista = await getUsersRequest(); 
-        if (lista && lista.length > 0) {
-          setVendedoresList(lista);
-          setSeller(lista[0].username); 
-        } else {
-          setVendedoresList([{ id: 0, username: 'ADMINISTRADOR' }]);
-          setSeller('ADMINISTRADOR');
-        }
-      } catch (error) {
-        setVendedoresList([{ id: 0, username: 'ADMINISTRADOR' }]);
-        setSeller('ADMINISTRADOR');
-      }
-    };
-    fetchSellers();
+    fetchActiveTables(); 
+    const interval = setInterval(fetchActiveTables, 5000); 
+    return () => clearInterval(interval);
   }, []);
 
-  // Modificación del filtro para mapear las pestañas solicitadas
+  useEffect(() => {
+    if (tipMode === '10') setTipAmount((total * 0.10).toFixed(2));
+    else if (tipMode === '20') setTipAmount((total * 0.20).toFixed(2));
+    else if (tipMode === '30') setTipAmount((total * 0.30).toFixed(2));
+  }, [total, tipMode]);
+
+  const handleManualTipChange = (val) => { setTipMode('custom'); setTipAmount(val); };
+
   const filteredProducts = products.filter(p => {
     const search = searchTerm.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(search) || (p.barcode && p.barcode.toLowerCase().includes(search));
-    
     if (!matchesSearch) return false;
-
-    // Filtrado por Pestaña/Categoría
-    if (menuTab === 0) {
-      // Pestaña 0: Botanas (Muestra alimentos y botanas)
-      return p.category === 'Alimentos' || p.category === 'Botanas' || p.category === 'Comida';
-    }
-    if (menuTab === 1) {
-      // Pestaña 1: Bebidas (Se incluye explícitamente Cervezas y Licores)
-      return p.category === 'Bebidas' || p.category === 'Bebida' || 
-             p.category === 'Cervezas' || p.category === 'Cerveza' || 
-             p.category === 'Licores' || p.category === 'Licor';
-    }
-    
-    return true; 
+    if (menuTab === 0) return ['Alimentos', 'Botanas'].includes(p.category);
+    if (menuTab === 1) return p.category === subCategory;
+    return false; 
   });
 
-  useEffect(() => {
-    setTotal(cart.reduce((acc, item) => acc + (item.price * item.quantity), 0));
-  }, [cart]);
+  useEffect(() => { setTotal(cart.reduce((acc, item) => acc + (item.price * item.quantity), 0)); }, [cart]);
 
-  // Actualizar la vista previa
   useEffect(() => {
     const updatePreview = async () => {
-        const ticketTotal = activeSplit > 1 ? total / activeSplit : total;
-        const ticketCart = activeSplit > 1 
-            ? cart.map(item => ({ ...item, price: item.price / activeSplit })) 
-            : cart;
-
-        const tempSaleData = {
-            id: '---', items: ticketCart, total: ticketTotal, paymentMethod: paymentMethod, seller: seller, date: new Date(), ticketNumber: ''
-        };
+        const tip = parseFloat(tipAmount) || 0;
+        const grandTotal = total + tip;
+        const tempSaleData = { id: '---', items: activeSplit > 1 ? cart.map(item => ({ ...item, price: item.price / activeSplit })) : cart, total: total, tip: tip, paymentMethod: paymentMethod, seller: sellerName, date: new Date(), ticketNumber: '' };
         const customerInfo = { name: selectedTable, address: activeSplit > 1 ? `Parte 1 de ${activeSplit}` : 'CONSUMO LOCAL', location: '', phone: '' };
         const html = await generateTicketHTML(tempSaleData, customerInfo);
         setPreviewHtml(html);
     };
     updatePreview();
-  }, [cart, total, selectedTable, paymentMethod, seller, activeSplit]); 
+  }, [cart, total, selectedTable, paymentMethod, sellerName, activeSplit, tipAmount]); 
 
   const handleTableChange = (newTable) => {
-    const mesasActualizadas = { ...mesasActivas, [selectedTable]: cart };
-    setMesasActivas(mesasActualizadas);
     setSelectedTable(newTable);
-    setCart(mesasActualizadas[newTable] || []);
-    setActiveSplit(1); 
-    setTempSplitWays(2);
-    setSplitPayments(['']); 
+    if (mesasActivas[newTable]) setCart(mesasActivas[newTable].cart || []);
+    else setCart([]);
+    cancelSplit(); setTipMode(''); setTipAmount(''); 
   };
 
-  const handleSaveOrder = () => {
-    setMesasActivas(prev => ({ ...prev, [selectedTable]: cart }));
-    showSnackbar(`✅ Comanda guardada en ${selectedTable}`, "success");
+  const handleSaveOrder = async () => {
+    try {
+      await saveActiveTableService({ tableName: selectedTable, waiter: sellerName, cart: cart });
+      await fetchActiveTables(); 
+      showSnackbar(`✅ Comanda de ${selectedTable} guardada (Atiende: ${sellerName})`, "success");
+    } catch (error) { showSnackbar(`❌ Error al guardar comanda en el servidor`, "error"); }
+  };
+
+  const handlePrintPreAccount = async () => {
+    if (cart.length === 0) return;
+    if (activeSplit > 1) {
+      const splitTotal = total / activeSplit; const splitTip = (parseFloat(tipAmount) || 0) / activeSplit;
+      for (let i = 1; i <= activeSplit; i++) {
+        const preAccountData = { items: cart, total: total, isSplit: true, activeSplit: activeSplit, splitTotal: splitTotal, tip: splitTip, date: new Date().toISOString(), seller: sellerName, ticketNumber: "PENDIENTE", paymentMethod: "POR DEFINIR" };
+        await printPreAccount(preAccountData, { name: selectedTable, address: `Pre-cuenta ${i} de ${activeSplit}` });
+      }
+      showSnackbar(`🖨️ ${activeSplit} Pre-cuentas desglosadas impresas`, "info");
+    } else {
+      const preAccountData = { items: cart, total: total, tip: parseFloat(tipAmount) || 0, date: new Date().toISOString(), seller: sellerName, ticketNumber: "PENDIENTE", paymentMethod: "POR DEFINIR" };
+      await printPreAccount(preAccountData, { name: selectedTable, address: "CONSUMO LOCAL" }); 
+      showSnackbar(`🖨️ Pre-cuenta de ${selectedTable} impresa`, "info");
+    }
+  };
+
+  const handleStartCashDrawer = async () => {
+    if (!initialCashInput) return showSnackbar("Ingresa un fondo inicial válido", "warning");
+    const success = await startCashSession(initialCashInput);
+    if (success) { setOpenStartBox(false); showSnackbar("✅ Caja iniciada con éxito", "success"); } 
+    else { showSnackbar("❌ Error al abrir caja", "error"); }
+  };
+
+  const handleCloseCashDrawer = async () => {
+    if (cashDrawer && cashDrawer.totals) { await printCashDrawerClosing(cashDrawer.totals, sellerName); }
+    const success = await closeCashSession();
+    if (success) { setOpenCloseBox(false); showSnackbar("✅ Caja cerrada y ticket de corte impreso", "success"); } 
+    else { showSnackbar("❌ Error al cerrar caja", "error"); }
+  };
+
+  const addSpecificItemToCart = (product, portionType) => {
+    let finalPrice = parseFloat(product.priceRetail); let finalName = product.name; let cartItemId = product.id; 
+    if (portionType === 'media') { finalPrice = parseFloat(product.priceHalf); finalName = `${product.name} (Media)`; cartItemId = `${product.id}-media`; } 
+    else if (portionType === 'completa') { cartItemId = `${product.id}-completa`; }
+    const existingItem = cart.find(item => item.id === cartItemId);
+    const stockActual = parseInt(product.stock) || 0; 
+    const isFoodOrSnack = product.category === 'Botanas' || product.category === 'Alimentos';
+
+    if (existingItem) {
+      if (existingItem.quantity + 1 > stockActual && !isFoodOrSnack) return showSnackbar(`⚠️ Stock insuficiente de ${product.name}`, "warning");
+      updateQuantity(cartItemId, existingItem.quantity + 1);
+    } else setCart([...cart, { ...product, id: cartItemId, name: finalName, quantity: 1, price: finalPrice }]);
+    setFlippedCardId(null);
   };
 
   const addToCart = (product) => {
-    if (product.stock <= 0 && product.category !== 'Botanas' && product.category !== 'Alimentos') {
-      showSnackbar(`❌ Agotado: ${product.name}`, "error");
-      return; 
-    }
-    const existingItem = cart.find(item => item.id === product.id);
-
-    if (existingItem) {
-      if (existingItem.quantity + 1 > product.stock && product.category !== 'Botanas' && product.category !== 'Alimentos') {
-        showSnackbar(`⚠️ Stock insuficiente de ${product.name}`, "warning");
-        return; 
-      }
-      updateQuantity(product.id, existingItem.quantity + 1);
-    } else {
-      setCart([...cart, { ...product, quantity: 1, price: parseFloat(product.priceRetail) }]);
-    }
+    const stockActual = parseInt(product.stock) || 0;
+    const isFoodOrSnack = product.category === 'Botanas' || product.category === 'Alimentos';
+    if (stockActual <= 0 && !isFoodOrSnack) return showSnackbar(`❌ Agotado: ${product.name}`, "error");
+    const hasHalfPrice = parseFloat(product.priceHalf) > 0;
+    if (isFoodOrSnack && hasHalfPrice) { setPortionDialog({ open: true, product }); return; }
+    addSpecificItemToCart(product, 'normal');
   };
 
   const updateQuantity = (id, newQty) => {
-    if (newQty < 1) {
-        removeFromCart(id);
-        return;
-    }
+    if (newQty < 1) return removeFromCart(id);
     setCart(cart.map(item => item.id === id ? { ...item, quantity: newQty > item.stock && item.category !== 'Botanas' && item.category !== 'Alimentos' ? item.stock : newQty } : item));
   };
 
   const removeFromCart = (id) => setCart(cart.filter(item => item.id !== id));
-  
-  const amountToPay = activeSplit > 1 ? total / activeSplit : total;
-
+  const tip = parseFloat(tipAmount) || 0; const grandTotal = total + tip; const amountToPay = activeSplit > 1 ? grandTotal / activeSplit : grandTotal;
   const showSnackbar = (message, severity = 'success') => setSnackbar({ open: true, message, severity });
 
-  const applySplit = () => {
-      setActiveSplit(tempSplitWays);
-      setSplitPayments(Array(tempSplitWays).fill('')); 
-      setOpenSplitDialog(false);
-      showSnackbar(`✅ Cuenta dividida en ${tempSplitWays} partes`, 'info');
-  };
-
-  const cancelSplit = () => {
-      setActiveSplit(1);
-      setTempSplitWays(2);
-      setSplitPayments(['']); 
-      showSnackbar(`ℹ️ División de cuenta cancelada`, 'info');
-  };
+  const applySplit = () => { setActiveSplit(tempSplitWays); setSplitPayments(Array(tempSplitWays).fill('')); setSplitMethods(Array(tempSplitWays).fill('EFECTIVO')); setOpenSplitDialog(false); showSnackbar(`✅ Cuenta dividida en ${tempSplitWays} partes`, 'info'); };
+  const cancelSplit = () => { setActiveSplit(1); setTempSplitWays(2); setSplitPayments(['']); setSplitMethods(['EFECTIVO']); showSnackbar(`ℹ️ División de cuenta cancelada`, 'info'); };
 
   const handleFinalConfirmCheckout = async () => {
     const customer = { name: selectedTable, address: 'LOCAL', location: '', phone: '' };
-    
-    // --- NUEVO: Cálculo de montos reales para guardar en la base de datos ---
-    let finalAmountPaid = total;
+    let finalAmountPaid = grandTotal;
     let finalChange = 0;
+    let dbPaymentMethod = paymentMethod;
 
-    if (paymentMethod === 'EFECTIVO') {
-      if (activeSplit > 1) {
-        // Si está dividido, sumamos el efectivo ingresado por cada persona
-        finalAmountPaid = splitPayments.reduce((acc, current) => acc + (parseFloat(current) || (total / activeSplit)), 0);
-        finalChange = finalAmountPaid - total;
-      } else {
-        // Cuenta normal individual
-        finalAmountPaid = parseFloat(splitPayments[0]) || total;
-        finalChange = finalAmountPaid - total;
+    if (activeSplit > 1) {
+      let cashSum = 0, cardSum = 0, transSum = 0;
+      finalAmountPaid = 0;
+      
+      for (let i = 0; i < activeSplit; i++) {
+          const amountWithoutTip = total / activeSplit;
+          const method = splitMethods[i];
+          const amountToPayThisPerson = grandTotal / activeSplit;
+          
+          if (method === 'EFECTIVO') cashSum += amountWithoutTip;
+          else if (method === 'TARJETA') cardSum += amountWithoutTip;
+          else if (method === 'TRANSFERENCIA') transSum += amountWithoutTip;
+
+          if (method === 'EFECTIVO') finalAmountPaid += (parseFloat(splitPayments[i]) || amountToPayThisPerson);
+          else finalAmountPaid += amountToPayThisPerson;
       }
+      finalChange = finalAmountPaid - grandTotal;
+      dbPaymentMethod = `SPLIT:EFECTIVO=${cashSum},TARJETA=${cardSum},TRANSFERENCIA=${transSum}`;
+    } else {
+      if (paymentMethod === 'EFECTIVO') { finalAmountPaid = parseFloat(splitPayments[0]) || grandTotal; finalChange = finalAmountPaid - grandTotal; }
     }
-    if (finalChange < 0) finalChange = 0; // Evitar cambios negativos visuales
-    // ----------------------------------------------------------------------
-
+    if (finalChange < 0) finalChange = 0; 
     const splitLabel = activeSplit > 1 ? `DIV-${activeSplit}` : '';
     
-    // AGREGAMOS finalAmountPaid Y finalChange AL METODO addSale PARA QUE SE GUARDEN EN EL HISTORIAL
-    const success = await addSale(
-      cart, 
-      total, 
-      customer, 
-      seller, 
-      paymentMethod, 
-      splitLabel, 
-      finalAmountPaid, 
-      finalChange
-    ); 
+    const success = await addSale(cart, total, customer, sellerName, dbPaymentMethod, splitLabel, finalAmountPaid, finalChange, tip); 
     
     if (success) {
         if (activeSplit > 1) {
-            const splitTotal = total / activeSplit;
+            const splitTotal = total / activeSplit; const splitTip = tip / activeSplit; const splitGrandTotal = splitTotal + splitTip;
             const splitCart = cart.map(item => ({ ...item, price: item.price / activeSplit }));
-
             for (let i = 1; i <= activeSplit; i++) {
+                const currentMethod = splitMethods[i - 1]; // Método elegido por ESTA persona
                 const splitCustomerInfo = { ...customer, address: `División: Pago ${i} de ${activeSplit}` };
-                const currentAmountPaid = paymentMethod === 'TARJETA' ? splitTotal : (parseFloat(splitPayments[i - 1]) || splitTotal);
-                const currentChange = currentAmountPaid - splitTotal;
-                
-                const splitSaleData = {
-                    ...splitCustomerInfo, seller, paymentMethod, items: splitCart, total: splitTotal, 
-                    amountPaid: currentAmountPaid, 
-                    change: currentChange > 0 ? currentChange : 0, date: new Date(), 
-                    splitWays: activeSplit, splitAmount: splitTotal 
-                };
-
-                // NUEVO: Agregamos también amountPaid y change al record que se procesa para la impresión
-                const splitSaleRecord = { 
-                    id: `TICKET-${i}`, date: new Date(), items: splitCart, total: splitTotal,
-                    paymentMethod: paymentMethod, seller: seller,
-                    amountPaid: currentAmountPaid,
-                    change: currentChange > 0 ? currentChange : 0
-                };
-                
+                const currentAmountPaid = currentMethod === 'EFECTIVO' ? (parseFloat(splitPayments[i - 1]) || splitGrandTotal) : splitGrandTotal;
+                const currentChange = currentAmountPaid - splitGrandTotal;
+                const splitSaleData = { ...splitCustomerInfo, seller: sellerName, paymentMethod: currentMethod, items: splitCart, total: splitTotal, tip: splitTip, amountPaid: currentAmountPaid, change: currentChange > 0 ? currentChange : 0, date: new Date() };
+                const splitSaleRecord = { id: `TICKET-${i}`, date: new Date(), items: splitCart, total: splitTotal, tip: splitTip, paymentMethod: currentMethod, seller: sellerName, amountPaid: currentAmountPaid, change: currentChange > 0 ? currentChange : 0 };
                 printTicket(splitSaleRecord, splitSaleData);
             }
         } else {
-            const currentAmountPaid = paymentMethod === 'TARJETA' ? total : (parseFloat(splitPayments[0]) || total);
-            const currentChange = currentAmountPaid - total;
-
-            const saleData = {
-                ...customer, seller, paymentMethod, items: cart, total: total, amountPaid: currentAmountPaid, 
-                change: currentChange > 0 ? currentChange : 0, date: new Date()
-            };
-            
-            // NUEVO: Agregamos amountPaid y change al record de la cuenta única
-            const saleRecord = { 
-                id: "COMPLETADO", date: new Date(), items: cart, total: total,
-                paymentMethod: paymentMethod, seller: seller,
-                amountPaid: currentAmountPaid,
-                change: currentChange > 0 ? currentChange : 0
-            };
+            const currentAmountPaid = (paymentMethod === 'TARJETA' || paymentMethod === 'TRANSFERENCIA') ? grandTotal : (parseFloat(splitPayments[0]) || grandTotal);
+            const currentChange = currentAmountPaid - grandTotal;
+            const saleData = { ...customer, seller: sellerName, paymentMethod, items: cart, total: total, tip: tip, amountPaid: currentAmountPaid, change: currentChange > 0 ? currentChange : 0, date: new Date() };
+            const saleRecord = { id: "COMPLETADO", date: new Date(), items: cart, total: total, tip: tip, paymentMethod: paymentMethod, seller: sellerName, amountPaid: currentAmountPaid, change: currentChange > 0 ? currentChange : 0 };
             printTicket(saleRecord, saleData);
         }
         
-        const nuevasMesas = {...mesasActivas};
-        delete nuevasMesas[selectedTable];
-        setMesasActivas(nuevasMesas);
-
-        setCart([]); setTotal(0); setSplitPayments(['']); setPaymentMethod('EFECTIVO'); 
-        setActiveSplit(1); setTempSplitWays(2);
-        setOpenConfirmDialog(false);
+        await clearActiveTableService(selectedTable); await fetchActiveTables();
+        setCart([]); setTotal(0); cancelSplit(); setPaymentMethod('EFECTIVO'); setTipAmount(''); setTipMode(''); setOpenConfirmDialog(false);
         showSnackbar(activeSplit > 1 ? `✅ Mesa cobrada y ${activeSplit} tickets impresos` : "✅ Mesa cobrada y liberada", "success");
     } else {
-        setOpenConfirmDialog(false);
-        showSnackbar("❌ Error al registrar cobro en el sistema", "error");
+        setOpenConfirmDialog(false); showSnackbar("❌ Error al registrar cobro en el sistema", "error");
     }
   };
 
-  const themeColors = {
-    bg: mode === 'dark' ? '#121212' : '#f0f2f5',
-    paper: mode === 'dark' ? '#1e1e1e' : '#ffffff',
-    headerRow: mode === 'dark' ? '#333' : '#f5f5f5',
-    totalBox: mode === 'dark' ? '#1e3a5f' : '#e3f2fd',
+  const themeColors = { bg: mode === 'dark' ? '#121212' : '#f0f2f5', paper: mode === 'dark' ? '#1e1e1e' : '#ffffff', headerRow: mode === 'dark' ? '#333' : '#f5f5f5', totalBox: mode === 'dark' ? '#1e3a5f' : '#e3f2fd' };
+
+  const handlePaymentChange = (index, value) => { const newPayments = [...splitPayments]; newPayments[index] = value; setSplitPayments(newPayments); };
+  const handleMethodChange = (index, value) => { if(value) { const newM = [...splitMethods]; newM[index] = value; setSplitMethods(newM); }};
+
+  const handleAddPortion = (product, portionType) => {
+    let finalPrice = parseFloat(product.priceRetail); let finalName = product.name; let cartItemId = product.id;
+    if (portionType === 'media') { finalPrice = parseFloat(product.priceHalf); finalName = `${product.name} (Media)`; cartItemId = `${product.id}-media`; } 
+    else if (portionType === 'completa') { cartItemId = `${product.id}-completa`; }
+    const existingItem = cart.find(item => item.id === cartItemId);
+    if (existingItem) updateQuantity(cartItemId, existingItem.quantity + 1);
+    else setCart([...cart, { ...product, id: cartItemId, name: finalName, quantity: 1, price: finalPrice }]);
+    setFlippedCardId(null);
   };
 
-  const handlePaymentChange = (index, value) => {
-    const newPayments = [...splitPayments];
-    newPayments[index] = value;
-    setSplitPayments(newPayments);
+  const handleClearOrder = async () => {
+    try { await clearActiveTableService(selectedTable); setCart([]); await fetchActiveTables(); showSnackbar(`🧹 Orden limpiada y liberada del servidor`, "info");
+    } catch (error) { showSnackbar(`❌ Error al limpiar la mesa`, "error"); }
   };
 
   return (
-    <Container maxWidth={false} disableGutters sx={{ 
-      height: isMobile ? 'auto' : 'calc(100vh - 85px)', 
-      p: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: themeColors.bg
-    }}>
-      
-      <Grid container spacing={2} sx={{ height: '100%', width: '100%', m: 0 }}>
+    <Container maxWidth={false} disableGutters sx={{ height: isMobile ? 'auto' : 'calc(100vh - 85px)', p: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: themeColors.bg }}>
+      <Box display="flex" alignItems="center" flexWrap="wrap" gap={3} mb={2} px={1}>
+        <Box display="flex" alignItems="center" gap={1.5}>
+          <PointOfSale sx={{ fontSize: 35, color: cashDrawer?.totals ? '#2e7d32' : '#d32f2f' }} />
+          <Box>
+            {cashDrawer?.totals ? (
+              <>
+                <Typography variant="h6" fontWeight="900" color="success.main" lineHeight={1.1}>CAJA ABIERTA</Typography>
+                <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
+                  Fondo: ${parseFloat(cashDrawer.totals.initialCash).toFixed(2)} | Cobrado (Efec): ${parseFloat(cashDrawer.totals.efectivo).toFixed(2)} | Propinas: ${parseFloat(cashDrawer.totals.totalPropinas).toFixed(2)} | Total en Caja: ${parseFloat(cashDrawer.totals.efectivoEsperadoEnCaja).toFixed(2)}
+                </Typography>
+              </>
+            ) : (<Typography variant="h5" fontWeight="900" color="error.main">CAJA CERRADA</Typography>)}
+          </Box>
+        </Box>
+        <Box>
+          {!cashDrawer ? (
+            <Button variant="contained" color="warning" size="medium" startIcon={<LockOpen />} onClick={() => setOpenStartBox(true)} sx={{ fontWeight: 'bold', borderRadius: 3, boxShadow: '0px 4px 10px rgba(255, 152, 0, 0.4)' }}>ARRANCAR CAJA</Button>
+          ) : (
+            <Button variant="contained" color="error" size="medium" startIcon={<Print />} onClick={() => setOpenCloseBox(true)} sx={{ fontWeight: 'bold', borderRadius: 3, boxShadow: '0px 4px 10px rgba(244, 67, 54, 0.4)' }}>CERRAR E IMPRIMIR TICKET</Button>
+          )}
+        </Box>
+      </Box>
+
+      <Grid container spacing={2} sx={{ height: 'calc(100% - 50px)', width: '100%', m: 0 }}>
         
         {/* COLUMNA 1: MENÚ */}
         <Grid size={{ xs: 12, md: 4 }} sx={{ height: isMobile ? '500px' : '100%', pl: '0 !important', display: 'flex', flexDirection: 'column' }}>
           <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, bgcolor: themeColors.paper }}>
             <Typography variant="h6" gutterBottom color="primary" fontWeight="bold">📖 Menú</Typography>
-            
             <TextField placeholder="Buscar producto..." variant="outlined" size="small" fullWidth value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ mb: 1.5, '& .MuiInputBase-root': { borderRadius: 3 } }} />
-            
-            {/* Se removió la pestaña 'Todo', ahora solo muestra Botanas y Bebidas */}
-            <Tabs 
-              value={menuTab} 
-              onChange={(e, newValue) => setMenuTab(newValue)} 
-              variant="fullWidth" 
-              indicatorColor="primary"
-              textColor="primary"
-              sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
-            >
+            <Tabs value={menuTab} onChange={(e, newValue) => { setMenuTab(newValue); setSubCategory('Todos'); setFlippedCardId(null); }} variant="fullWidth" indicatorColor="primary" textColor="primary" sx={{ mb: 1.5, borderBottom: 1, borderColor: 'divider' }}>
               <Tab icon={<Restaurant fontSize="small" />} iconPosition="start" label="Botanas" sx={{ fontWeight: 'bold', fontSize: '13px' }} />
               <Tab icon={<LocalBar fontSize="small" />} iconPosition="start" label="Bebidas" sx={{ fontWeight: 'bold', fontSize: '13px' }} />
             </Tabs>
+            
+            {menuTab === 1 && (
+              <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', mb: 2, pb: 1, '&::-webkit-scrollbar': { height: '5px' }, '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: '4px' } }}>
+                {['Cervezas', 'Refrescos y Aguas', 'Coctelería', 'Licores'].map((cat) => (
+                  <Chip key={cat} label={cat} clickable color={subCategory === cat ? "primary" : "default"} variant={subCategory === cat ? "filled" : "outlined"} onClick={() => setSubCategory(cat)} sx={{ fontWeight: 'bold', fontSize: '12px' }} />
+                ))}
+              </Box>
+            )}
             
             <Box sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
               <Grid container spacing={1.5}>
                 {filteredProducts.map((prod) => {
                   const isAgotado = prod.stock <= 0 && prod.category !== 'Botanas' && prod.category !== 'Alimentos';
+                  const isFoodOrSnack = prod.category === 'Botanas' || prod.category === 'Alimentos';
+                  const hasHalfPrice = parseFloat(prod.priceHalf) > 0;
+                  const isFlipped = flippedCardId === prod.id;
+
                   return (
                     <Grid size={{ xs: 6 }} key={prod.id}>
-                        <Card elevation={isAgotado ? 0 : 2} sx={{ borderRadius: 2, bgcolor: isAgotado ? 'action.hover' : 'background.paper', opacity: isAgotado ? 0.6 : 1 }}>
-                            <CardActionArea onClick={() => isAgotado ? null : addToCart(prod)} sx={{ height: '100px', p: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                <Typography variant="subtitle2" fontWeight="bold" textAlign="center" sx={{ lineHeight: 1.2, mb: 0.5 }}>{prod.name}</Typography>
-                                <Typography variant="h6" color="primary" fontWeight="bold">${parseFloat(prod.priceRetail).toFixed(2)}</Typography>
-                            </CardActionArea>
+                        <Card elevation={isAgotado ? 0 : 2} sx={{ borderRadius: 2, bgcolor: isAgotado ? 'action.hover' : 'background.paper', opacity: isAgotado ? 0.6 : 1, overflow: 'hidden' }}>
+                            {isFlipped ? (
+                              <Box sx={{ display: 'flex', height: '100px', width: '100%' }}>
+                                <Button variant="contained" color="warning" onClick={() => handleAddPortion(prod, 'media')} sx={{ width: '50%', borderRadius: 0, display: 'flex', flexDirection: 'column' }}>
+                                  <Typography variant="h5" fontWeight="900">M</Typography><Typography variant="caption" fontWeight="bold">${parseFloat(prod.priceHalf).toFixed(2)}</Typography>
+                                </Button>
+                                <Button variant="contained" color="success" onClick={() => handleAddPortion(prod, 'completa')} sx={{ width: '50%', borderRadius: 0, display: 'flex', flexDirection: 'column' }}>
+                                  <Typography variant="h5" fontWeight="900">C</Typography><Typography variant="caption" fontWeight="bold">${parseFloat(prod.priceRetail).toFixed(2)}</Typography>
+                                </Button>
+                              </Box>
+                            ) : (
+                              <CardActionArea onClick={() => { if (isAgotado) return; if (isFoodOrSnack && hasHalfPrice) setFlippedCardId(flippedCardId === prod.id ? null : prod.id); else addToCart(prod); }} sx={{ height: '100px', p: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                  <Typography variant="subtitle2" fontWeight="bold" textAlign="center" sx={{ lineHeight: 1.2, mb: 0.5 }}>{prod.name}</Typography>
+                                  <Typography variant="h6" color="primary" fontWeight="bold">${parseFloat(prod.priceRetail).toFixed(2)}</Typography>
+                                  {isFoodOrSnack && hasHalfPrice && <Typography variant="caption" color="text.secondary" sx={{ position: 'absolute', top: 2, right: 4, fontWeight: 'bold' }}>⟳</Typography>}
+                              </CardActionArea>
+                            )}
                         </Card>
                     </Grid>
                   );
                 })}
-                {filteredProducts.length === 0 && (
-                  <Box width="100%" textAlign="center" py={4}>
-                    <Typography color="text.secondary">No se encontraron productos en esta sección.</Typography>
-                  </Box>
-                )}
               </Grid>
             </Box>
           </Paper>
@@ -339,8 +356,13 @@ export default function POS() {
         <Grid size={{ xs: 12, md: 4 }} sx={{ height: isMobile ? 'auto' : '100%', pt: '0 !important', display: 'flex', flexDirection: 'column' }}> 
           <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, bgcolor: themeColors.paper }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6" fontWeight="bold" color="secondary">📝 Orden: {selectedTable}</Typography>
-              <Button size="small" variant="text" startIcon={<History />} onClick={() => setHistoryOpen(true)}>Historial</Button>
+              <Typography variant="h6" fontWeight="bold" color="secondary">📝 Orden: {selectedTable}
+                {mesasActivas[selectedTable] && (<span style={{ fontSize: '13px', color: '#888', display: 'block' }}>(Atiende: {mesasActivas[selectedTable].waiter})</span>)}
+              </Typography>
+              <Box display="flex" gap={0.5}>
+                <Button size="small" variant="text" color="error" startIcon={<Delete />} onClick={handleClearOrder} disabled={cart.length === 0} sx={{ fontWeight: 'bold' }}>Limpiar</Button>
+                <Button size="small" variant="text" startIcon={<History />} onClick={() => setHistoryOpen(true)}>Historial</Button>
+              </Box>
             </Box>
             
             <TableContainer sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
@@ -356,23 +378,16 @@ export default function POS() {
                   {cart.map((item) => (
                     <TableRow key={item.id} hover>
                       <TableCell sx={{ py: 1.5 }}> 
-                        <Typography variant="body2" fontWeight="bold">{item.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">${item.price} c/u</Typography>
+                        <Typography variant="body2" fontWeight="bold">{item.name}</Typography><Typography variant="caption" color="text.secondary">${item.price} c/u</Typography>
                       </TableCell>
                       <TableCell align="center" sx={{ py: 1.5 }}>
                         <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
-                            <IconButton size="small" color="error" onClick={() => updateQuantity(item.id, item.quantity - 1)}>
-                                {item.quantity === 1 ? <Delete /> : <RemoveCircleOutline />}
-                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => updateQuantity(item.id, item.quantity - 1)}>{item.quantity === 1 ? <Delete /> : <RemoveCircleOutline />}</IconButton>
                             <Typography fontWeight="bold" sx={{ width: '25px', textAlign: 'center' }}>{item.quantity}</Typography>
-                            <IconButton size="small" color="primary" onClick={() => updateQuantity(item.id, item.quantity + 1)}>
-                                <AddCircleOutline />
-                            </IconButton>
+                            <IconButton size="small" color="primary" onClick={() => updateQuantity(item.id, item.quantity + 1)}><AddCircleOutline /></IconButton>
                         </Box>
                       </TableCell>
-                      <TableCell align="right" sx={{ py: 1.5, fontWeight:'bold', fontSize: '16px' }}>
-                        ${(item.price * item.quantity).toFixed(2)}
-                      </TableCell>
+                      <TableCell align="right" sx={{ py: 1.5, fontWeight:'bold', fontSize: '16px' }}>${(item.price * item.quantity).toFixed(2)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -381,10 +396,10 @@ export default function POS() {
 
             <Box sx={{ p: 2, bgcolor: themeColors.totalBox, borderRadius: 3, display: 'flex', flexDirection: 'column', gap: 1 }}>
               {activeSplit > 1 && (
-                 <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Box display="flex" justifyContent="space-between" alignItems="center">
                     <Chip label={`Dividido en ${activeSplit} partes`} color="info" size="small" sx={{ fontWeight: 'bold' }} onDelete={cancelSplit}/>
-                    <Typography variant="h6" fontWeight="bold" color="text.secondary">Total Real: ${total.toFixed(2)}</Typography>
-                 </Box>
+                    <Typography variant="h6" fontWeight="bold" color="text.secondary">Total Real: ${grandTotal.toFixed(2)}</Typography>
+                </Box>
               )}
               <Box display="flex" justifyContent="space-between" alignItems="center">
                 <Box>
@@ -401,79 +416,137 @@ export default function POS() {
         <Grid size={{ xs: 12, md: 4 }} sx={{ height: isMobile ? 'auto' : '100%', pt: '0 !important', display: 'flex', flexDirection: 'column' }}>
           <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, bgcolor: themeColors.paper, overflowY: 'auto' }}>
             
-            <FormControl fullWidth size="large" sx={{ mb: 3 }}>
+            <FormControl fullWidth size="large" sx={{ mb: 2 }}>
               <InputLabel sx={{ fontWeight: 'bold' }}><TableBar sx={{mr:1, verticalAlign:'middle'}}/> Seleccionar Mesa</InputLabel>
               <Select value={selectedTable} label="Seleccionar Mesa" onChange={(e) => handleTableChange(e.target.value)} sx={{fontSize:'18px', fontWeight: 'bold', borderRadius: 3}}>
-                {LISTA_MESAS.map((mesa) => (
-                  <MenuItem key={mesa} value={mesa} sx={{fontSize:'16px', py: 1.5}}>
-                    {mesa} {mesasActivas[mesa] && mesasActivas[mesa].length > 0 ? " 🟢 (Ocupada)" : ""}
-                  </MenuItem>
-                ))}
+                {LISTA_MESAS.map((mesa) => {
+                  const infoMesa = mesasActivas[mesa];
+                  const isOccupied = infoMesa && infoMesa.cart && infoMesa.cart.length > 0;
+                  return (
+                    <MenuItem key={mesa} value={mesa} sx={{fontSize:'16px', py: 1.5}}>
+                      {mesa} {isOccupied ? ` 🟢 (Atiende: ${infoMesa.waiter})` : ""}
+                    </MenuItem>
+                  );
+                })}
               </Select>
             </FormControl>
 
-            <Box display="flex" gap={2} mb={3}>
-                <Button variant="contained" color="warning" size="large" fullWidth startIcon={<Save />} onClick={handleSaveOrder} disabled={cart.length === 0} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>
-                  GUARDAR ORDEN
-                </Button>
-                <Button variant="contained" color="info" size="large" fullWidth startIcon={<CallSplit />} onClick={() => setOpenSplitDialog(true)} disabled={total === 0} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>
-                  DIVIDIR
-                </Button>
+            <Box display="flex" gap={2} mb={2}>
+                <Button variant="contained" color="warning" size="large" fullWidth startIcon={<Save />} onClick={handleSaveOrder} disabled={cart.length === 0 || !cashDrawer} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>GUARDAR</Button>
+                <Button variant="contained" color="info" size="large" fullWidth startIcon={<CallSplit />} onClick={() => setOpenSplitDialog(true)} disabled={total === 0 || !cashDrawer} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>DIVIDIR</Button>
             </Box>
 
-            <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight="bold">MÉTODO DE PAGO</Typography>
-            <ToggleButtonGroup value={paymentMethod} exclusive onChange={(e, val) => val && setPaymentMethod(val)} fullWidth sx={{ mb: 3 }}>
-                <ToggleButton value="EFECTIVO" sx={{ py: 1.5, fontWeight: 'bold' }}><Payments sx={{mr:1}}/> Efectivo</ToggleButton>
-                <ToggleButton value="TARJETA" sx={{ py: 1.5, fontWeight: 'bold' }}><CreditCard sx={{mr:1}}/> Tarjeta</ToggleButton>
+            <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight="bold">PROPINA</Typography>
+            <ToggleButtonGroup value={tipMode} exclusive onChange={(e, val) => { if(val) setTipMode(val); else {setTipMode(''); setTipAmount('');} }} fullWidth sx={{ mb: 1 }}>
+                <ToggleButton value="10" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>10%</ToggleButton>
+                <ToggleButton value="20" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>20%</ToggleButton>
+                <ToggleButton value="30" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>30%</ToggleButton>
+                <ToggleButton value="custom" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>Manual</ToggleButton>
             </ToggleButtonGroup>
 
-            {/* SECCIÓN DINÁMICA DE PAGOS */}
-            {paymentMethod === 'EFECTIVO' && (
-              <Box mb={2} sx={{ flexGrow: 1, overflowY: 'auto' }}>
-                {Array.from({ length: activeSplit }).map((_, index) => {
-                  const currentTotal = total / activeSplit;
-                  const currentPaid = parseFloat(splitPayments[index]) || 0;
-                  const currentChange = currentPaid - currentTotal;
+            {tipMode === 'custom' && (<TextField placeholder="Propina Manual..." type="number" variant="outlined" fullWidth value={tipAmount} onChange={(e) => handleManualTipChange(e.target.value)} sx={{ mb: 2 }} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: 16, fontWeight: 'bold', borderRadius: 2 } }} />)}
+            {tipMode !== 'custom' && tipMode !== '' && (<Typography variant="body2" color="primary" fontWeight="bold" sx={{ mb: 2, textAlign: 'center' }}>Propina Calculada: ${tipAmount}</Typography>)}
 
-                  return (
-                    <Box key={index} mb={2} p={2} sx={{ bgcolor: mode === 'dark' ? '#2c2c2c' : '#f9f9f9', borderRadius: 3 }}>
-                      <Typography variant="subtitle2" mb={1} fontWeight="bold" color="text.secondary">
-                        {activeSplit > 1 ? `PERSONA ${index + 1} (Paga: $${currentTotal.toFixed(2)})` : `¿CON CUÁNTO PAGAN?`}
-                      </Typography>
-                      <TextField 
-                        type="number" 
-                        value={splitPayments[index]} 
-                        onChange={(e) => handlePaymentChange(index, e.target.value)} 
-                        size="large" fullWidth color="success" placeholder="$ 0.00" 
-                        InputProps={{ sx: { fontSize: 20, fontWeight: 'bold', borderRadius: 2, bgcolor: themeColors.paper } }} 
-                      />
-                      {splitPayments[index] && (
-                        <Typography variant="body1" sx={{ mt: 1, textAlign:'center', fontWeight:'bold', color: currentChange >= 0 ? '#2e7d32' : '#d32f2f' }}>
-                            Cambio: ${currentChange.toFixed(2)}
-                        </Typography>
-                      )}
-                    </Box>
-                  );
-                })}
-              </Box>
+            <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight="bold">MÉTODO DE PAGO</Typography>
+            
+            {activeSplit > 1 ? (
+               <Box mb={2} sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
+                 {Array.from({ length: activeSplit }).map((_, index) => {
+                   const currentTotal = grandTotal / activeSplit;
+                   const currentMethod = splitMethods[index];
+                   const currentPaid = parseFloat(splitPayments[index]) || 0;
+                   const currentChange = currentPaid - currentTotal;
+                   return (
+                     <Box key={index} mb={2} p={2} sx={{ bgcolor: mode === 'dark' ? '#2c2c2c' : '#f9f9f9', borderRadius: 3, border: '1px solid #ddd' }}>
+                       <Typography variant="subtitle2" mb={1} fontWeight="bold" color="text.secondary">PERSONA {index + 1} (Paga: ${currentTotal.toFixed(2)})</Typography>
+                       
+                       <ToggleButtonGroup value={currentMethod} exclusive onChange={(e, val) => handleMethodChange(index, val)} fullWidth size="small" sx={{ mb: 1.5 }}>
+                           <ToggleButton value="EFECTIVO" sx={{ fontWeight: 'bold' }}>Efect.</ToggleButton>
+                           <ToggleButton value="TARJETA" sx={{ fontWeight: 'bold' }}>Tarj.</ToggleButton>
+                           <ToggleButton value="TRANSFERENCIA" sx={{ fontWeight: 'bold', fontSize: '11px' }}>Transf.</ToggleButton>
+                       </ToggleButtonGroup>
+
+                       {currentMethod === 'EFECTIVO' ? (
+                           <>
+                             <TextField type="number" value={splitPayments[index]} onChange={(e) => handlePaymentChange(index, e.target.value)} size="small" fullWidth color="success" placeholder="¿Con cuánto paga?" disabled={!cashDrawer} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontWeight: 'bold', borderRadius: 2, bgcolor: themeColors.paper } }} />
+                             {splitPayments[index] && (<Typography variant="body2" sx={{ mt: 1, textAlign:'center', fontWeight:'bold', color: currentChange >= 0 ? '#2e7d32' : '#d32f2f' }}>Cambio: ${currentChange.toFixed(2)}</Typography>)}
+                           </>
+                       ) : (
+                           <Typography variant="body2" textAlign="center" color="primary" fontWeight="bold">Pago exacto con {currentMethod}</Typography>
+                       )}
+                     </Box>
+                   );
+                 })}
+               </Box>
+            ) : (
+              <>
+                <ToggleButtonGroup value={paymentMethod} exclusive onChange={(e, val) => val && setPaymentMethod(val)} fullWidth sx={{ mb: 2 }}>
+                    <ToggleButton value="EFECTIVO" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><Payments sx={{mr:1}}/> Efect.</ToggleButton>
+                    <ToggleButton value="TARJETA" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><CreditCard sx={{mr:1}}/> Tarj.</ToggleButton>
+                    <ToggleButton value="TRANSFERENCIA" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><AccountBalanceWallet sx={{mr:1}}/> Transf.</ToggleButton>
+                </ToggleButtonGroup>
+
+                {paymentMethod === 'EFECTIVO' && (
+                  <Box mb={2}>
+                    <TextField type="number" value={splitPayments[0]} onChange={(e) => handlePaymentChange(0, e.target.value)} size="large" fullWidth color="success" placeholder="¿Con cuánto paga?" disabled={!cashDrawer} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: 20, fontWeight: 'bold', borderRadius: 2, bgcolor: themeColors.paper } }} />
+                    {splitPayments[0] && (<Typography variant="body1" sx={{ mt: 1, textAlign:'center', fontWeight:'bold', color: (parseFloat(splitPayments[0]) - grandTotal) >= 0 ? '#2e7d32' : '#d32f2f' }}>Cambio: ${(parseFloat(splitPayments[0]) - grandTotal).toFixed(2)}</Typography>)}
+                  </Box>
+                )}
+              </>
             )}
 
             <Box sx={{ mt: 'auto', pt: 2 }}>
-                <Button variant="contained" color="success" fullWidth size="large" onClick={() => setOpenConfirmDialog(true)} disabled={cart.length === 0} sx={{ py: 2.5, fontSize: '18px', fontWeight: '900', borderRadius: 3, boxShadow: '0px 8px 20px rgba(76, 175, 80, 0.4)' }}>
-                {activeSplit > 1 ? `COBRAR (${activeSplit} de $${amountToPay.toFixed(2)})` : `COBRAR $${total.toFixed(2)}`}
+                <Button variant="outlined" color="info" fullWidth startIcon={<Print />} sx={{ mb: 1.5, py: 1.5, fontWeight: 'bold', borderRadius: 3, borderWidth: 2, '&:hover': { borderWidth: 2 } }} onClick={handlePrintPreAccount} disabled={cart.length === 0 || !cashDrawer}>IMPRIMIR PRE-CUENTA</Button>
+                <Button variant="contained" color={cashDrawer ? "success" : "error"} fullWidth size="large" onClick={() => setOpenConfirmDialog(true)} disabled={cart.length === 0 || !cashDrawer} sx={{ py: 2.5, fontSize: '18px', fontWeight: '900', borderRadius: 3, boxShadow: '0px 8px 20px rgba(76, 175, 80, 0.4)' }}>
+                  {!cashDrawer ? "ABRE LA CAJA PARA COBRAR" : `COBRAR $${grandTotal.toFixed(2)}`}
                 </Button>
             </Box>
 
           </Paper>
         </Grid>
-
       </Grid>
-      
-      {/* MODAL DIVIDIR CUENTA */}
+       
+      <Dialog open={openStartBox} PaperProps={{ sx: { borderRadius: 3, p: 2, minWidth: '350px' } }}>
+        <DialogTitle sx={{ textAlign: 'center', color: '#f57c00', fontWeight: '900', fontSize: '24px' }}><LockOpen sx={{ fontSize: 40, display: 'block', margin: '0 auto', mb: 1 }} />ARRANCAR CAJA</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" textAlign="center" mb={3} color="text.secondary">Ingresa el fondo inicial de la caja para poder comenzar a cobrar comandas el día de hoy.</Typography>
+          <TextField autoFocus fullWidth label="Fondo Inicial" type="number" variant="outlined" value={initialCashInput} onChange={(e) => setInitialCashInput(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: 24, fontWeight: 'bold' } }} />
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
+          <Button variant="text" color="inherit" onClick={() => setOpenStartBox(false)}>Cancelar</Button>
+          <Button variant="contained" color="warning" size="large" onClick={handleStartCashDrawer} sx={{ fontWeight: 'bold', px: 4 }}>ABRIR CAJA</Button>
+        </DialogActions>
+      </Dialog>
+ 
+      <Dialog open={openCloseBox} onClose={() => setOpenCloseBox(false)} PaperProps={{ sx: { borderRadius: 3, minWidth: '400px' } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#d32f2f', fontWeight: '900' }}><Lock /> CERRAR CAJA ACTUAL</DialogTitle>
+        <DialogContent dividers>
+          {cashDrawer?.totals ? (
+            <Box>
+              <Typography variant="subtitle1" fontWeight="bold">FONDO INICIAL: ${parseFloat(cashDrawer.totals.initialCash).toFixed(2)}</Typography>
+              <Box my={2} p={2} bgcolor="background.default" borderRadius={2}>
+                <Typography variant="body2" color="text.secondary">Ingresos Efectivo: ${parseFloat(cashDrawer.totals.efectivo).toFixed(2)}</Typography>
+                <Typography variant="body2" color="text.secondary">Ingresos Tarjeta: ${parseFloat(cashDrawer.totals.tarjeta).toFixed(2)}</Typography>
+                <Typography variant="body2" color="text.secondary">Ingresos Transf: ${parseFloat(cashDrawer.totals.transferencia).toFixed(2)}</Typography>
+              </Box>
+              <Typography variant="subtitle1" fontWeight="bold" color="primary">TOTAL CONSUMOS: ${parseFloat(cashDrawer.totals.totalConsumo).toFixed(2)}</Typography>
+              <Typography variant="subtitle1" fontWeight="bold" color="secondary">TOTAL PROPINAS: ${parseFloat(cashDrawer.totals.totalPropinas).toFixed(2)}</Typography>
+              <Box mt={3} p={2} bgcolor="#e8f5e9" borderRadius={2} border="1px solid #4caf50">
+                <Typography variant="h6" textAlign="center" fontWeight="900" color="#2e7d32">EFECTIVO EN CAJA DEBE SER:<br />${parseFloat(cashDrawer.totals.efectivoEsperadoEnCaja).toFixed(2)}</Typography>
+              </Box>
+            </Box>
+          ) : (<Typography>Cargando datos...</Typography>)}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
+          <Button onClick={() => setOpenCloseBox(false)} color="inherit">Cancelar</Button>
+          <Button variant="contained" color="error" onClick={handleCloseCashDrawer} sx={{ fontWeight: 'bold' }}>CERRAR E IMPRIMIR TICKET</Button>
+        </DialogActions>
+      </Dialog>
+ 
       <Dialog open={openSplitDialog} onClose={() => setOpenSplitDialog(false)} PaperProps={{ sx: { borderRadius: 3, minWidth: '350px' } }}>
         <DialogTitle sx={{ color: '#0288d1', display:'flex', alignItems:'center', gap:1, fontWeight: 'bold' }}><CallSplit/> Dividir Cuenta ({selectedTable})</DialogTitle>
         <DialogContent sx={{ textAlign: 'center', p: 4 }}>
-            <Typography variant="h6" gutterBottom color="text.secondary">Total de la mesa: <b>${total.toFixed(2)}</b></Typography>
+            <Typography variant="h6" gutterBottom color="text.secondary">Total de la mesa: <b>${grandTotal.toFixed(2)}</b></Typography>
             <Box display="flex" alignItems="center" justifyContent="center" gap={3} my={3}>
                 <IconButton color="primary" onClick={() => setTempSplitWays(s => Math.max(2, s - 1))} sx={{ border: '2px solid' }}><RemoveCircleOutline fontSize="large"/></IconButton>
                 <Typography variant="h4" fontWeight="bold">{tempSplitWays}</Typography>
@@ -481,7 +554,7 @@ export default function POS() {
             </Box>
             <Paper elevation={0} sx={{ p: 3, bgcolor: '#e1f5fe', borderRadius: 3 }}>
                 <Typography variant="body1" fontWeight="bold" color="text.secondary">Imprimir {tempSplitWays} tickets por:</Typography>
-                <Typography variant="h2" color="primary" fontWeight="900">${(total / tempSplitWays).toFixed(2)}</Typography>
+                <Typography variant="h2" color="primary" fontWeight="900">${(grandTotal / tempSplitWays).toFixed(2)}</Typography>
             </Paper>
         </DialogContent>
         <DialogActions sx={{ p: 2, display: 'flex', justifyContent: 'space-between' }}>
@@ -492,18 +565,16 @@ export default function POS() {
 
       <SalesHistory open={historyOpen} onClose={() => setHistoryOpen(false)} sales={sales} />
 
-      {/* MODAL CONFIRMAR COBRO */}
       <Dialog open={openConfirmDialog} onClose={() => setOpenConfirmDialog(false)} PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#2e7d32', fontWeight: 'bold' }}>
-            <CheckCircle /> Confirmar Cobro
-        </DialogTitle>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#2e7d32', fontWeight: 'bold' }}><CheckCircle /> Confirmar Cobro</DialogTitle>
         <DialogContent sx={{ p: 3 }}>
             <DialogContentText sx={{ fontSize: '18px' }}>
-                ¿Deseas cerrar la <b>{selectedTable}</b> y registrar el pago en <b>{paymentMethod}</b>?<br/><br/>
+                ¿Deseas cerrar la <b>{selectedTable}</b>?<br/><br/>
+                {tip > 0 && <>Propina incluida: <b style={{ color: '#d4af37' }}>${tip.toFixed(2)}</b><br/></>}
                 {activeSplit > 1 ? (
-                  <>Se emitirán <b>{activeSplit} tickets separados</b> por <b>${amountToPay.toFixed(2)}</b> cada uno.</>
+                  <>Se emitirán <b>{activeSplit} tickets separados</b> por <b>${amountToPay.toFixed(2)}</b> cada uno, con sus métodos de pago individuales.</>
                 ) : (
-                  <>Total a cobrar: <b>${total.toFixed(2)}</b>.</>
+                  <>Total a cobrar: <b>${grandTotal.toFixed(2)}</b> en <b>{paymentMethod}</b>.</>
                 )}
             </DialogContentText>
         </DialogContent>
