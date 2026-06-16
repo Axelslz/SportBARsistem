@@ -175,10 +175,9 @@ export default function Inventory() {
                     const isFoodOrSnack = row.category === 'Botanas' || row.category === 'Alimentos';
                     const stock = parseInt(row.stock) || 0;
                     const sold = parseInt(row.soldCount) || 0;
-                    
+                  
                     let stockDisplay;
 
-                    // Si es comida o botana mostramos el 🔥 Fuego de ventas
                     if (isFoodOrSnack) {
                         stockDisplay = (
                             <Chip 
@@ -187,7 +186,6 @@ export default function Inventory() {
                             />
                         );
                     } else {
-                        // Si es bebida mostramos semáforo de inventario
                         let stockColor = 'success';
                         let stockLabel = `${stock} pzs`;
                         if (stock <= 0) { stockColor = 'error'; stockLabel = 'Agotado'; } 
@@ -226,7 +224,6 @@ export default function Inventory() {
                             {isAdmin && (
                               <TableCell align="center">
                                   <Box display="flex" justifyContent="center" gap={0.5}>
-                                      {/* El botón de agregar stock solo se muestra si NO es botana/alimento */}
                                       {!isFoodOrSnack && (
                                         <IconButton color="success" onClick={() => handleOpenStock(row)} sx={{ bgcolor: 'success.light', color: 'success.dark', '&:hover': { bgcolor: 'success.main', color: '#fff'} }} title="Ingresar Stock">
                                             <AddBox />

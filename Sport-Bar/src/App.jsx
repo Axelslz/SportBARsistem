@@ -14,7 +14,6 @@ import Dashboard from './pages/Dashboard';
 import Maintenance from './pages/Maintenance';
 import Expenses from './pages/Expenses';
 import Settings from './components/Settings'; 
-// 1. IMPORTAMOS EL NUEVO COMPONENTE (Asegúrate de que la ruta coincida donde lo guardaste)
 import Cotizacion from './pages/Cotizacion'; 
 import { ThemeModeProvider } from './context/ThemeContext';
 

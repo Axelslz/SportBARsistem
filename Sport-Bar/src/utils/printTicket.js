@@ -29,21 +29,17 @@ const getTicketHTML = (logoBase64, saleData, customerInfo, copyLabel) => {
   const isSplit = saleData.isSplit || false;
   const splitTotal = saleData.splitTotal || saleData.total;
 
-  // Propina real recibida desde el POS
   const tipAmount = saleData.tip ? parseFloat(saleData.tip) : 0;
   const grandTotal = isSplit ? (splitTotal + tipAmount) : (saleData.total + tipAmount);
   
   const amountPaidDisplay = saleData.amountPaid !== undefined ? formatCurrency(saleData.amountPaid) : formatCurrency(grandTotal);
   const changeDisplay = saleData.change !== undefined ? formatCurrency(saleData.change) : formatCurrency(0);
-  
-  // Variables para la Pre-Cuenta (Lógica Dinámica de Propina)
   const isPreAccount = copyLabel === "PRE-CUENTA";
   const baseAmountForTip = isSplit ? splitTotal : saleData.total;
   
   let preAccountTipAmount = 0;
   let preAccountTipLabel = "";
 
-  // 🔥 NUEVO: Si seleccionaste propina en el POS, usa esa. Si no, sugiere el 10%.
   if (tipAmount > 0) {
     preAccountTipAmount = tipAmount;
     preAccountTipLabel = "PROPINA SELECCIONADA:";
@@ -228,6 +224,16 @@ export const printCashDrawerClosing = async (totalsData, username = "CAJERO") =>
   const logoBase64 = await convertImageToBase64(LOGO_BAR);
   const formatCurrency = (amount) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 
+  const fondo = parseFloat(totalsData.initialCash) || 0;
+  const efectivo = parseFloat(totalsData.efectivo) || 0;
+  const tarjeta = parseFloat(totalsData.tarjeta) || 0;
+  const transferencia = parseFloat(totalsData.transferencia) || 0;
+  const propinas = parseFloat(totalsData.totalPropinas) || 0;
+  const consumos = parseFloat(totalsData.totalConsumo) || 0;
+
+  const totalVentas = efectivo + tarjeta + transferencia;
+  const granTotalConFondo = fondo + totalVentas; 
+
   const htmlContent = `
     <html>
       <head>
@@ -238,6 +244,7 @@ export const printCashDrawerClosing = async (totalsData, username = "CAJERO") =>
           .center { text-align: center; }
           .logo-img { width: 80px; height: auto; display: block; margin: 0 auto 5px auto; filter: grayscale(100%); }
           .divider { border-top: 1px dashed #000; margin: 10px 0; }
+          .divider-bold { border-top: 2px solid #000; margin: 10px 0; }
           .bold { font-weight: bold; }
           .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
         </style>
@@ -255,42 +262,49 @@ export const printCashDrawerClosing = async (totalsData, username = "CAJERO") =>
         
         <div class="row bold" style="font-size: 14px;">
           <span>FONDO INICIAL:</span>
-          <span>${formatCurrency(totalsData.initialCash)}</span>
+          <span>${formatCurrency(fondo)}</span>
         </div>
         
         <div class="divider"></div>
         
-        <div class="bold" style="margin-bottom: 5px;">INGRESOS POR VENTAS:</div>
+        <div class="bold" style="margin-bottom: 5px;">INGRESOS EN TURNOS:</div>
         <div class="row">
           <span>EFECTIVO:</span>
-          <span>${formatCurrency(totalsData.efectivo)}</span>
+          <span>${formatCurrency(efectivo)}</span>
         </div>
         <div class="row">
           <span>TARJETA:</span>
-          <span>${formatCurrency(totalsData.tarjeta)}</span>
+          <span>${formatCurrency(tarjeta)}</span>
         </div>
         <div class="row">
           <span>TRANSFERENCIA:</span>
-          <span>${formatCurrency(totalsData.transferencia)}</span>
+          <span>${formatCurrency(transferencia)}</span>
         </div>
+
+        <div class="divider-bold"></div>
         
-        <div class="divider"></div>
-        
-        <div class="row bold" style="font-size: 14px;">
-          <span>TOTAL CONSUMOS:</span>
-          <span>${formatCurrency(totalsData.totalConsumo)}</span>
+        <div class="row bold" style="font-size: 16px;">
+          <span>GRAN TOTAL (CON FONDO):</span>
+          <span>${formatCurrency(granTotalConFondo)}</span>
         </div>
-        <div class="row bold" style="font-size: 14px; color: #333;">
+
+        <div class="divider-bold"></div>
+        
+        <div class="row bold" style="font-size: 13px; color: #333;">
           <span>TOTAL PROPINAS:</span>
-          <span>${formatCurrency(totalsData.totalPropinas)}</span>
+          <span>${formatCurrency(propinas)}</span>
+        </div>
+        <div class="row bold" style="font-size: 13px;">
+          <span>TOTAL CONSUMOS (SIN PROP):</span>
+          <span>${formatCurrency(consumos)}</span>
         </div>
         
-        <div class="divider" style="border-top: 2px solid #000;"></div>
+        <div class="divider-bold"></div>
         
-        <div class="center" style="margin-top: 15px;">
-          <div style="font-size: 12px; margin-bottom: 5px;">EFECTIVO TOTAL ESPERADO EN CAJA:</div>
-          <div style="font-size: 20px; font-weight: 900;">${formatCurrency(totalsData.efectivoEsperadoEnCaja)}</div>
-          <div style="font-size: 9px; margin-top: 2px;">(Fondo Inicial + Ventas en Efectivo)</div>
+        <div class="center" style="margin-top: 15px; padding: 10px; border: 1px dashed #000;">
+          <div style="font-size: 12px; margin-bottom: 5px; font-weight: bold;">EFECTIVO ESPERADO EN CAJÓN:</div>
+          <div style="font-size: 22px; font-weight: 900;">${formatCurrency(fondo + efectivo)}</div>
+          <div style="font-size: 9px; margin-top: 2px;">(Fondo Inicial + Ingresos en Efectivo)</div>
         </div>
         
         <br/><br/><br/>

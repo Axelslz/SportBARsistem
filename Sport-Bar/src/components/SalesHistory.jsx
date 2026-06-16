@@ -30,8 +30,6 @@ export default function SalesHistory({ open, onClose, sales }) {
 
     const isSplitNumber = splitIndex !== null;
     const ticketTotal = isSplitNumber ? (parseFloat(sale.total) / ways) : parseFloat(sale.total);
-    
-    // 🌟 NUEVO: Extraemos la propina y la dividimos si es cuenta separada
     const rawTip = sale.tip ? parseFloat(sale.tip) : 0;
     const ticketTip = isSplitNumber ? (rawTip / ways) : rawTip;
     const grandTotal = ticketTotal + ticketTip;
@@ -51,7 +49,7 @@ export default function SalesHistory({ open, onClose, sales }) {
       paymentMethod: sale.paymentMethod,
       seller: sale.seller,
       total: ticketTotal,
-      tip: ticketTip, // 🌟 NUEVO: Le pasamos la propina a printTicket.js
+      tip: ticketTip, 
       amountPaid: realAmountPaid, 
       change: realChange,
       splitWays: ways, 
@@ -70,7 +68,6 @@ export default function SalesHistory({ open, onClose, sales }) {
     };
 
     try {
-      // 🌟 MODIFICADO: Generamos el HTML usando la función principal pero en modo "vista previa"
       const html = await generateTicketHTML(saleData, customerInfo);
       setTicketHTML(html);
     } catch (error) {

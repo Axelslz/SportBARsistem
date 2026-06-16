@@ -150,7 +150,6 @@ export default function ProductForm({ open, handleClose, onSave, initialData }) 
               </Grid>
             )}
 
-            {/* SOLO MOSTRAMOS STOCK SI ES BEBIDA O INSUMO */}
             {!isFoodOrSnack && (
                 <Grid item xs={12} sm={12}>
                 <TextField
@@ -167,7 +166,6 @@ export default function ProductForm({ open, handleClose, onSave, initialData }) 
                 />
                 </Grid>
             )}
-
           </Grid>
         </DialogContent>
         

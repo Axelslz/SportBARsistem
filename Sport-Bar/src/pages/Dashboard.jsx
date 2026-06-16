@@ -236,7 +236,6 @@ export default function Dashboard() {
         </Grid>
       </Grid>
 
-      {/* CHIP DE RECAUDACIÓN DIARIA */}
       <Box sx={{ mb: 3 }}>
         <Paper elevation={1} sx={{ p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: theme.palette.mode === 'dark' ? 'rgba(2, 136, 209, 0.1)' : '#e3f2fd', borderLeft: `4px solid ${theme.palette.info.main}` }}>
           <Box display="flex" alignItems="center" gap={2}>
@@ -249,9 +248,7 @@ export default function Dashboard() {
         </Paper>
       </Box>
 
-      {/* GRÁFICOS */}
       <Grid container spacing={3} mb={3}>
-        {/* MOVIMIENTO DIARIO */}
         <Grid item xs={12} md={7}>
           <Paper elevation={3} sx={{ p: 3, height: '400px', display:'flex', flexDirection:'column' }}>
             <Typography variant="h6" gutterBottom color="text.secondary">Flujo Diario de Caja y Costos (Últimos 7 días)</Typography>
@@ -270,7 +267,6 @@ export default function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* REPARTO DE CONSUMO */}
         <Grid item xs={12} md={5}>
           <Paper elevation={3} sx={{ p: 3, height: '400px', display: 'flex', flexDirection: 'column' }}>
             <Typography variant="h6" gutterBottom color="text.secondary">¿Qué se vende más en el Bar?</Typography>
@@ -301,7 +297,6 @@ export default function Dashboard() {
               )}
             </Box>
             
-            {/* TARJETAS RÁPIDAS ABAJO DEL GRÁFICO */}
             <Box display="flex" justifyContent="space-around" mt={1} bgcolor="action.hover" p={1.5} borderRadius={2}>
               <Box textAlign="center">
                 <LocalBar sx={{ color: '#ffb300' }} />
@@ -329,7 +324,6 @@ export default function Dashboard() {
         </Grid>
       </Grid>
 
-      {/* DIALOGO DE CORTE */}
       <Dialog open={openDialog} onClose={handleCloseDialog}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#d32f2f' }}>
           <WarningAmberRounded fontSize="large" />

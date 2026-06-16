@@ -9,7 +9,6 @@ import {
 } from '../services/productService';
 import { createSaleService, getSalesHistoryService } from '../services/saleService';
 
-// 🔥 NUEVO: Detecta automáticamente si está en Producción o Desarrollo
 const API_URL = import.meta.env.MODE === 'production' 
   ? 'https://backsportbarsistem.onrender.com/api/sales/cash' 
   : 'http://localhost:5000/api/sales/cash';
@@ -52,7 +51,6 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  // 🔥 CORREGIDO: Uso de la variable API_URL dinámica
   const loadActiveCashSession = async () => {
     try {
       const response = await fetch(`${API_URL}/active`); 
@@ -63,7 +61,6 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  // 🔥 CORREGIDO: Uso de la variable API_URL dinámica
   const startCashSession = async (initialCash) => {
     try {
       await fetch(`${API_URL}/start`, {
@@ -79,7 +76,6 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  // 🔥 CORREGIDO: Uso de la variable API_URL dinámica
   const closeCashSession = async () => {
     try {
       await fetch(`${API_URL}/close`, { method: 'POST' });

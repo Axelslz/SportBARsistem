@@ -25,7 +25,9 @@ const LISTA_MESAS = ['MESA 1', 'MESA 2', 'MESA 3', 'MESA 4', 'MESA 5', 'MESA 6',
 
 export default function POS() {
   const { products, addSale, sales, cashDrawer, startCashSession, closeCashSession } = useInventory();
-  const { user } = useAuth(); // 🔥 Obtenemos al usuario que inició sesión
+  const { user } = useAuth(); 
+  const isAdmin = user?.role === 'admin'; 
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md')); 
   const { mode } = useThemeMode();
@@ -67,7 +69,13 @@ export default function POS() {
     try {
       const data = await getActiveTablesService();
       const tableMap = {};
-      data.forEach(t => { tableMap[t.tableName] = { cart: t.cart, waiter: t.waiter }; });
+      data.forEach(t => { 
+        let parsedCart = t.cart;
+        if (typeof parsedCart === 'string') {
+          try { parsedCart = JSON.parse(parsedCart); } catch (e) { parsedCart = []; }
+        }
+        tableMap[t.tableName] = { cart: parsedCart || [], waiter: t.waiter }; 
+      });
       setMesasActivas(tableMap);
     } catch (error) { console.error("Error obteniendo mesas activas:", error); }
   };
@@ -111,9 +119,19 @@ export default function POS() {
 
   const handleTableChange = (newTable) => {
     setSelectedTable(newTable);
-    if (mesasActivas[newTable]) setCart(mesasActivas[newTable].cart || []);
-    else setCart([]);
-    cancelSplit(); setTipMode(''); setTipAmount(''); 
+    
+    if (mesasActivas[newTable] && Array.isArray(mesasActivas[newTable].cart)) {
+      setCart(mesasActivas[newTable].cart);
+    } else {
+      setCart([]);
+    }
+    
+    setActiveSplit(1); 
+    setTempSplitWays(2); 
+    setSplitPayments(['']); 
+    setSplitMethods(['EFECTIVO']);
+    setTipMode(''); 
+    setTipAmount(''); 
   };
 
   const handleSaveOrder = async () => {
@@ -227,7 +245,7 @@ export default function POS() {
             const splitTotal = total / activeSplit; const splitTip = tip / activeSplit; const splitGrandTotal = splitTotal + splitTip;
             const splitCart = cart.map(item => ({ ...item, price: item.price / activeSplit }));
             for (let i = 1; i <= activeSplit; i++) {
-                const currentMethod = splitMethods[i - 1]; // Método elegido por ESTA persona
+                const currentMethod = splitMethods[i - 1];
                 const splitCustomerInfo = { ...customer, address: `División: Pago ${i} de ${activeSplit}` };
                 const currentAmountPaid = currentMethod === 'EFECTIVO' ? (parseFloat(splitPayments[i - 1]) || splitGrandTotal) : splitGrandTotal;
                 const currentChange = currentAmountPaid - splitGrandTotal;
@@ -242,7 +260,6 @@ export default function POS() {
             const saleRecord = { id: "COMPLETADO", date: new Date(), items: cart, total: total, tip: tip, paymentMethod: paymentMethod, seller: sellerName, amountPaid: currentAmountPaid, change: currentChange > 0 ? currentChange : 0 };
             printTicket(saleRecord, saleData);
         }
-        
         await clearActiveTableService(selectedTable); await fetchActiveTables();
         setCart([]); setTotal(0); cancelSplit(); setPaymentMethod('EFECTIVO'); setTipAmount(''); setTipMode(''); setOpenConfirmDialog(false);
         showSnackbar(activeSplit > 1 ? `✅ Mesa cobrada y ${activeSplit} tickets impresos` : "✅ Mesa cobrada y liberada", "success");
@@ -273,33 +290,64 @@ export default function POS() {
 
   return (
     <Container maxWidth={false} disableGutters sx={{ height: isMobile ? 'auto' : 'calc(100vh - 85px)', p: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: themeColors.bg }}>
-      <Box display="flex" alignItems="center" flexWrap="wrap" gap={3} mb={2} px={1}>
-        <Box display="flex" alignItems="center" gap={1.5}>
-          <PointOfSale sx={{ fontSize: 35, color: cashDrawer?.totals ? '#2e7d32' : '#d32f2f' }} />
-          <Box>
-            {cashDrawer?.totals ? (
-              <>
-                <Typography variant="h6" fontWeight="900" color="success.main" lineHeight={1.1}>CAJA ABIERTA</Typography>
-                <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
-                  Fondo: ${parseFloat(cashDrawer.totals.initialCash).toFixed(2)} | Cobrado (Efec): ${parseFloat(cashDrawer.totals.efectivo).toFixed(2)} | Propinas: ${parseFloat(cashDrawer.totals.totalPropinas).toFixed(2)} | Total en Caja: ${parseFloat(cashDrawer.totals.efectivoEsperadoEnCaja).toFixed(2)}
-                </Typography>
-              </>
-            ) : (<Typography variant="h5" fontWeight="900" color="error.main">CAJA CERRADA</Typography>)}
-          </Box>
-        </Box>
-        <Box>
-          {!cashDrawer ? (
-            <Button variant="contained" color="warning" size="medium" startIcon={<LockOpen />} onClick={() => setOpenStartBox(true)} sx={{ fontWeight: 'bold', borderRadius: 3, boxShadow: '0px 4px 10px rgba(255, 152, 0, 0.4)' }}>ARRANCAR CAJA</Button>
-          ) : (
-            <Button variant="contained" color="error" size="medium" startIcon={<Print />} onClick={() => setOpenCloseBox(true)} sx={{ fontWeight: 'bold', borderRadius: 3, boxShadow: '0px 4px 10px rgba(244, 67, 54, 0.4)' }}>CERRAR E IMPRIMIR TICKET</Button>
-          )}
-        </Box>
+      
+      <Box display="flex" alignItems="center" flexWrap="wrap" gap={3} mb={2} px={1} width="100%">
+        {isAdmin ? (
+          <>
+            <Box display="flex" alignItems="center" gap={1.5}>
+              <PointOfSale sx={{ fontSize: 35, color: cashDrawer?.totals ? '#2e7d32' : '#d32f2f' }} />
+              <Box>
+                {cashDrawer?.totals ? (
+                  <>
+                    <Typography variant="h6" fontWeight="900" color="success.main" lineHeight={1.1}>CAJA ABIERTA</Typography>
+                    <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">
+                      Fondo: ${parseFloat(cashDrawer.totals.initialCash).toFixed(2)} | Cobrado (Efec): ${parseFloat(cashDrawer.totals.efectivo).toFixed(2)} | Propinas: ${parseFloat(cashDrawer.totals.totalPropinas).toFixed(2)} | Total en Caja: ${parseFloat(cashDrawer.totals.efectivoEsperadoEnCaja).toFixed(2)}
+                    </Typography>
+                  </>
+                ) : (<Typography variant="h5" fontWeight="900" color="error.main">CAJA CERRADA</Typography>)}
+              </Box>
+            </Box>
+            <Box>
+              {!cashDrawer ? (
+                <Button variant="contained" color="warning" size="medium" startIcon={<LockOpen />} onClick={() => setOpenStartBox(true)} sx={{ fontWeight: 'bold', borderRadius: 3, boxShadow: '0px 4px 10px rgba(255, 152, 0, 0.4)' }}>ARRANCAR CAJA</Button>
+              ) : (
+                <Button variant="contained" color="error" size="medium" startIcon={<Print />} onClick={() => setOpenCloseBox(true)} sx={{ fontWeight: 'bold', borderRadius: 3, boxShadow: '0px 4px 10px rgba(244, 67, 54, 0.4)' }}>CERRAR E IMPRIMIR TICKET</Button>
+              )}
+            </Box>
+          </>
+        ) : (
+          <>
+            <Box display="flex" gap={2} width="100%" alignItems="center" bgcolor={themeColors.paper} p={1.5} borderRadius={3} sx={{ boxShadow: 1 }}>
+              <FormControl size="small" sx={{ minWidth: 250 }}>
+                <InputLabel sx={{ fontWeight: 'bold' }}><TableBar sx={{mr:1, verticalAlign:'middle'}}/> Seleccionar Mesa</InputLabel>
+                <Select value={selectedTable} label="Seleccionar Mesa" onChange={(e) => handleTableChange(e.target.value)} sx={{fontWeight: 'bold', borderRadius: 2}}>
+                  {LISTA_MESAS.map((mesa) => {
+                    const infoMesa = mesasActivas[mesa];
+                    const isOccupied = infoMesa && infoMesa.cart && infoMesa.cart.length > 0;
+                    return (
+                      <MenuItem key={mesa} value={mesa}>
+                        {mesa} {isOccupied ? ` 🟢 (Atiende: ${infoMesa.waiter})` : ""}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </FormControl>
+              
+              <Button variant="contained" color="warning" size="large" startIcon={<Save />} onClick={handleSaveOrder} disabled={cart.length === 0} sx={{ fontWeight: 'bold', px: 3, borderRadius: 2 }}>
+                GUARDAR ORDEN
+              </Button>
+              <Button variant="contained" color="info" size="large" startIcon={<CallSplit />} onClick={() => setOpenSplitDialog(true)} disabled={total === 0} sx={{ fontWeight: 'bold', px: 3, borderRadius: 2 }}>
+                DIVIDIR CUENTA
+              </Button>
+            </Box>
+          </>
+        )}
       </Box>
 
       <Grid container spacing={2} sx={{ height: 'calc(100% - 50px)', width: '100%', m: 0 }}>
         
-        {/* COLUMNA 1: MENÚ */}
-        <Grid size={{ xs: 12, md: 4 }} sx={{ height: isMobile ? '500px' : '100%', pl: '0 !important', display: 'flex', flexDirection: 'column' }}>
+        
+        <Grid size={{ xs: 12, md: isAdmin ? 4 : 6 }} sx={{ height: isMobile ? '500px' : '100%', pl: '0 !important', display: 'flex', flexDirection: 'column' }}>
           <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, bgcolor: themeColors.paper }}>
             <Typography variant="h6" gutterBottom color="primary" fontWeight="bold">📖 Menú</Typography>
             <TextField placeholder="Buscar producto..." variant="outlined" size="small" fullWidth value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ mb: 1.5, '& .MuiInputBase-root': { borderRadius: 3 } }} />
@@ -352,8 +400,8 @@ export default function POS() {
           </Paper>
         </Grid>
 
-        {/* COLUMNA 2: COMANDA */}
-        <Grid size={{ xs: 12, md: 4 }} sx={{ height: isMobile ? 'auto' : '100%', pt: '0 !important', display: 'flex', flexDirection: 'column' }}> 
+        {/* 🌟 COLUMNA 2: COMANDA */}
+        <Grid size={{ xs: 12, md: isAdmin ? 4 : 6 }} sx={{ height: isMobile ? 'auto' : '100%', pt: '0 !important', display: 'flex', flexDirection: 'column' }}> 
           <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, bgcolor: themeColors.paper }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Typography variant="h6" fontWeight="bold" color="secondary">📝 Orden: {selectedTable}
@@ -361,7 +409,9 @@ export default function POS() {
               </Typography>
               <Box display="flex" gap={0.5}>
                 <Button size="small" variant="text" color="error" startIcon={<Delete />} onClick={handleClearOrder} disabled={cart.length === 0} sx={{ fontWeight: 'bold' }}>Limpiar</Button>
-                <Button size="small" variant="text" startIcon={<History />} onClick={() => setHistoryOpen(true)}>Historial</Button>
+                {isAdmin && (
+                  <Button size="small" variant="text" startIcon={<History />} onClick={() => setHistoryOpen(true)}>Historial</Button>
+                )}
               </Box>
             </Box>
             
@@ -412,98 +462,99 @@ export default function POS() {
           </Paper>
         </Grid>
 
-        {/* COLUMNA 3: COBRO */}
-        <Grid size={{ xs: 12, md: 4 }} sx={{ height: isMobile ? 'auto' : '100%', pt: '0 !important', display: 'flex', flexDirection: 'column' }}>
-          <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, bgcolor: themeColors.paper, overflowY: 'auto' }}>
-            
-            <FormControl fullWidth size="large" sx={{ mb: 2 }}>
-              <InputLabel sx={{ fontWeight: 'bold' }}><TableBar sx={{mr:1, verticalAlign:'middle'}}/> Seleccionar Mesa</InputLabel>
-              <Select value={selectedTable} label="Seleccionar Mesa" onChange={(e) => handleTableChange(e.target.value)} sx={{fontSize:'18px', fontWeight: 'bold', borderRadius: 3}}>
-                {LISTA_MESAS.map((mesa) => {
-                  const infoMesa = mesasActivas[mesa];
-                  const isOccupied = infoMesa && infoMesa.cart && infoMesa.cart.length > 0;
-                  return (
-                    <MenuItem key={mesa} value={mesa} sx={{fontSize:'16px', py: 1.5}}>
-                      {mesa} {isOccupied ? ` 🟢 (Atiende: ${infoMesa.waiter})` : ""}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
+        {isAdmin && (
+          <Grid size={{ xs: 12, md: 4 }} sx={{ height: isMobile ? 'auto' : '100%', pt: '0 !important', display: 'flex', flexDirection: 'column' }}>
+            <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 3, bgcolor: themeColors.paper, overflowY: 'auto' }}>
+              
+              <FormControl fullWidth size="large" sx={{ mb: 2 }}>
+                <InputLabel sx={{ fontWeight: 'bold' }}><TableBar sx={{mr:1, verticalAlign:'middle'}}/> Seleccionar Mesa</InputLabel>
+                <Select value={selectedTable} label="Seleccionar Mesa" onChange={(e) => handleTableChange(e.target.value)} sx={{fontSize:'18px', fontWeight: 'bold', borderRadius: 3}}>
+                  {LISTA_MESAS.map((mesa) => {
+                    const infoMesa = mesasActivas[mesa];
+                    const isOccupied = infoMesa && infoMesa.cart && infoMesa.cart.length > 0;
+                    return (
+                      <MenuItem key={mesa} value={mesa} sx={{fontSize:'16px', py: 1.5}}>
+                        {mesa} {isOccupied ? ` 🟢 (Atiende: ${infoMesa.waiter})` : ""}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </FormControl>
 
-            <Box display="flex" gap={2} mb={2}>
-                <Button variant="contained" color="warning" size="large" fullWidth startIcon={<Save />} onClick={handleSaveOrder} disabled={cart.length === 0 || !cashDrawer} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>GUARDAR</Button>
-                <Button variant="contained" color="info" size="large" fullWidth startIcon={<CallSplit />} onClick={() => setOpenSplitDialog(true)} disabled={total === 0 || !cashDrawer} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>DIVIDIR</Button>
-            </Box>
+              <Box display="flex" gap={2} mb={2}>
+                  <Button variant="contained" color="warning" size="large" fullWidth startIcon={<Save />} onClick={handleSaveOrder} disabled={cart.length === 0 || !cashDrawer} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>GUARDAR</Button>
+                  <Button variant="contained" color="info" size="large" fullWidth startIcon={<CallSplit />} onClick={() => setOpenSplitDialog(true)} disabled={total === 0 || !cashDrawer} sx={{ py: 2, borderRadius: 3, fontWeight: 'bold' }}>DIVIDIR</Button>
+              </Box>
 
-            <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight="bold">PROPINA</Typography>
-            <ToggleButtonGroup value={tipMode} exclusive onChange={(e, val) => { if(val) setTipMode(val); else {setTipMode(''); setTipAmount('');} }} fullWidth sx={{ mb: 1 }}>
-                <ToggleButton value="10" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>10%</ToggleButton>
-                <ToggleButton value="20" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>20%</ToggleButton>
-                <ToggleButton value="30" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>30%</ToggleButton>
-                <ToggleButton value="custom" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>Manual</ToggleButton>
-            </ToggleButtonGroup>
+              <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight="bold">PROPINA</Typography>
+              <ToggleButtonGroup value={tipMode} exclusive onChange={(e, val) => { if(val) setTipMode(val); else {setTipMode(''); setTipAmount('');} }} fullWidth sx={{ mb: 1 }}>
+                  <ToggleButton value="10" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>10%</ToggleButton>
+                  <ToggleButton value="20" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>20%</ToggleButton>
+                  <ToggleButton value="30" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>30%</ToggleButton>
+                  <ToggleButton value="custom" sx={{ fontWeight: 'bold' }} disabled={!cashDrawer}>Manual</ToggleButton>
+              </ToggleButtonGroup>
 
-            {tipMode === 'custom' && (<TextField placeholder="Propina Manual..." type="number" variant="outlined" fullWidth value={tipAmount} onChange={(e) => handleManualTipChange(e.target.value)} sx={{ mb: 2 }} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: 16, fontWeight: 'bold', borderRadius: 2 } }} />)}
-            {tipMode !== 'custom' && tipMode !== '' && (<Typography variant="body2" color="primary" fontWeight="bold" sx={{ mb: 2, textAlign: 'center' }}>Propina Calculada: ${tipAmount}</Typography>)}
+              {tipMode === 'custom' && (<TextField placeholder="Propina Manual..." type="number" variant="outlined" fullWidth value={tipAmount} onChange={(e) => handleManualTipChange(e.target.value)} sx={{ mb: 2 }} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: 16, fontWeight: 'bold', borderRadius: 2 } }} />)}
+              {tipMode !== 'custom' && tipMode !== '' && (<Typography variant="body2" color="primary" fontWeight="bold" sx={{ mb: 2, textAlign: 'center' }}>Propina Calculada: ${tipAmount}</Typography>)}
 
-            <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight="bold">MÉTODO DE PAGO</Typography>
-            
-            {activeSplit > 1 ? (
-               <Box mb={2} sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
-                 {Array.from({ length: activeSplit }).map((_, index) => {
-                   const currentTotal = grandTotal / activeSplit;
-                   const currentMethod = splitMethods[index];
-                   const currentPaid = parseFloat(splitPayments[index]) || 0;
-                   const currentChange = currentPaid - currentTotal;
-                   return (
-                     <Box key={index} mb={2} p={2} sx={{ bgcolor: mode === 'dark' ? '#2c2c2c' : '#f9f9f9', borderRadius: 3, border: '1px solid #ddd' }}>
-                       <Typography variant="subtitle2" mb={1} fontWeight="bold" color="text.secondary">PERSONA {index + 1} (Paga: ${currentTotal.toFixed(2)})</Typography>
-                       
-                       <ToggleButtonGroup value={currentMethod} exclusive onChange={(e, val) => handleMethodChange(index, val)} fullWidth size="small" sx={{ mb: 1.5 }}>
-                           <ToggleButton value="EFECTIVO" sx={{ fontWeight: 'bold' }}>Efect.</ToggleButton>
-                           <ToggleButton value="TARJETA" sx={{ fontWeight: 'bold' }}>Tarj.</ToggleButton>
-                           <ToggleButton value="TRANSFERENCIA" sx={{ fontWeight: 'bold', fontSize: '11px' }}>Transf.</ToggleButton>
-                       </ToggleButtonGroup>
+              <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight="bold">MÉTODO DE PAGO</Typography>
+              
+              {activeSplit > 1 ? (
+                <Box mb={2} sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
+                  {Array.from({ length: activeSplit }).map((_, index) => {
+                    const currentTotal = grandTotal / activeSplit;
+                    const currentMethod = splitMethods[index];
+                    const currentPaid = parseFloat(splitPayments[index]) || 0;
+                    const currentChange = currentPaid - currentTotal;
+                    return (
+                      <Box key={index} mb={2} p={2} sx={{ bgcolor: mode === 'dark' ? '#2c2c2c' : '#f9f9f9', borderRadius: 3, border: '1px solid #ddd' }}>
+                        <Typography variant="subtitle2" mb={1} fontWeight="bold" color="text.secondary">PERSONA {index + 1} (Paga: ${currentTotal.toFixed(2)})</Typography>
+                        
+                        <ToggleButtonGroup value={currentMethod} exclusive onChange={(e, val) => handleMethodChange(index, val)} fullWidth size="small" sx={{ mb: 1.5 }}>
+                            <ToggleButton value="EFECTIVO" sx={{ fontWeight: 'bold' }}>Efect.</ToggleButton>
+                            <ToggleButton value="TARJETA" sx={{ fontWeight: 'bold' }}>Tarj.</ToggleButton>
+                            <ToggleButton value="TRANSFERENCIA" sx={{ fontWeight: 'bold', fontSize: '11px' }}>Transf.</ToggleButton>
+                        </ToggleButtonGroup>
 
-                       {currentMethod === 'EFECTIVO' ? (
-                           <>
-                             <TextField type="number" value={splitPayments[index]} onChange={(e) => handlePaymentChange(index, e.target.value)} size="small" fullWidth color="success" placeholder="¿Con cuánto paga?" disabled={!cashDrawer} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontWeight: 'bold', borderRadius: 2, bgcolor: themeColors.paper } }} />
-                             {splitPayments[index] && (<Typography variant="body2" sx={{ mt: 1, textAlign:'center', fontWeight:'bold', color: currentChange >= 0 ? '#2e7d32' : '#d32f2f' }}>Cambio: ${currentChange.toFixed(2)}</Typography>)}
-                           </>
-                       ) : (
-                           <Typography variant="body2" textAlign="center" color="primary" fontWeight="bold">Pago exacto con {currentMethod}</Typography>
-                       )}
-                     </Box>
-                   );
-                 })}
-               </Box>
-            ) : (
-              <>
-                <ToggleButtonGroup value={paymentMethod} exclusive onChange={(e, val) => val && setPaymentMethod(val)} fullWidth sx={{ mb: 2 }}>
-                    <ToggleButton value="EFECTIVO" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><Payments sx={{mr:1}}/> Efect.</ToggleButton>
-                    <ToggleButton value="TARJETA" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><CreditCard sx={{mr:1}}/> Tarj.</ToggleButton>
-                    <ToggleButton value="TRANSFERENCIA" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><AccountBalanceWallet sx={{mr:1}}/> Transf.</ToggleButton>
-                </ToggleButtonGroup>
+                        {currentMethod === 'EFECTIVO' ? (
+                            <>
+                              <TextField type="number" value={splitPayments[index]} onChange={(e) => handlePaymentChange(index, e.target.value)} size="small" fullWidth color="success" placeholder="¿Con cuánto paga?" disabled={!cashDrawer} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontWeight: 'bold', borderRadius: 2, bgcolor: themeColors.paper } }} />
+                              {splitPayments[index] && (<Typography variant="body2" sx={{ mt: 1, textAlign:'center', fontWeight:'bold', color: currentChange >= 0 ? '#2e7d32' : '#d32f2f' }}>Cambio: ${currentChange.toFixed(2)}</Typography>)}
+                            </>
+                        ) : (
+                            <Typography variant="body2" textAlign="center" color="primary" fontWeight="bold">Pago exacto con {currentMethod}</Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              ) : (
+                <>
+                  <ToggleButtonGroup value={paymentMethod} exclusive onChange={(e, val) => val && setPaymentMethod(val)} fullWidth sx={{ mb: 2 }}>
+                      <ToggleButton value="EFECTIVO" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><Payments sx={{mr:1}}/> Efect.</ToggleButton>
+                      <ToggleButton value="TARJETA" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><CreditCard sx={{mr:1}}/> Tarj.</ToggleButton>
+                      <ToggleButton value="TRANSFERENCIA" sx={{ py: 1.5, fontWeight: 'bold' }} disabled={!cashDrawer}><AccountBalanceWallet sx={{mr:1}}/> Transf.</ToggleButton>
+                  </ToggleButtonGroup>
 
-                {paymentMethod === 'EFECTIVO' && (
-                  <Box mb={2}>
-                    <TextField type="number" value={splitPayments[0]} onChange={(e) => handlePaymentChange(0, e.target.value)} size="large" fullWidth color="success" placeholder="¿Con cuánto paga?" disabled={!cashDrawer} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: 20, fontWeight: 'bold', borderRadius: 2, bgcolor: themeColors.paper } }} />
-                    {splitPayments[0] && (<Typography variant="body1" sx={{ mt: 1, textAlign:'center', fontWeight:'bold', color: (parseFloat(splitPayments[0]) - grandTotal) >= 0 ? '#2e7d32' : '#d32f2f' }}>Cambio: ${(parseFloat(splitPayments[0]) - grandTotal).toFixed(2)}</Typography>)}
-                  </Box>
-                )}
-              </>
-            )}
+                  {paymentMethod === 'EFECTIVO' && (
+                    <Box mb={2}>
+                      <TextField type="number" value={splitPayments[0]} onChange={(e) => handlePaymentChange(0, e.target.value)} size="large" fullWidth color="success" placeholder="¿Con cuánto paga?" disabled={!cashDrawer} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: 20, fontWeight: 'bold', borderRadius: 2, bgcolor: themeColors.paper } }} />
+                      {splitPayments[0] && (<Typography variant="body1" sx={{ mt: 1, textAlign:'center', fontWeight:'bold', color: (parseFloat(splitPayments[0]) - grandTotal) >= 0 ? '#2e7d32' : '#d32f2f' }}>Cambio: ${(parseFloat(splitPayments[0]) - grandTotal).toFixed(2)}</Typography>)}
+                    </Box>
+                  )}
+                </>
+              )}
 
-            <Box sx={{ mt: 'auto', pt: 2 }}>
-                <Button variant="outlined" color="info" fullWidth startIcon={<Print />} sx={{ mb: 1.5, py: 1.5, fontWeight: 'bold', borderRadius: 3, borderWidth: 2, '&:hover': { borderWidth: 2 } }} onClick={handlePrintPreAccount} disabled={cart.length === 0 || !cashDrawer}>IMPRIMIR PRE-CUENTA</Button>
-                <Button variant="contained" color={cashDrawer ? "success" : "error"} fullWidth size="large" onClick={() => setOpenConfirmDialog(true)} disabled={cart.length === 0 || !cashDrawer} sx={{ py: 2.5, fontSize: '18px', fontWeight: '900', borderRadius: 3, boxShadow: '0px 8px 20px rgba(76, 175, 80, 0.4)' }}>
-                  {!cashDrawer ? "ABRE LA CAJA PARA COBRAR" : `COBRAR $${grandTotal.toFixed(2)}`}
-                </Button>
-            </Box>
+              <Box sx={{ mt: 'auto', pt: 2 }}>
+                  <Button variant="outlined" color="info" fullWidth startIcon={<Print />} sx={{ mb: 1.5, py: 1.5, fontWeight: 'bold', borderRadius: 3, borderWidth: 2, '&:hover': { borderWidth: 2 } }} onClick={handlePrintPreAccount} disabled={cart.length === 0 || !cashDrawer}>IMPRIMIR PRE-CUENTA</Button>
+                  <Button variant="contained" color={cashDrawer ? "success" : "error"} fullWidth size="large" onClick={() => setOpenConfirmDialog(true)} disabled={cart.length === 0 || !cashDrawer} sx={{ py: 2.5, fontSize: '18px', fontWeight: '900', borderRadius: 3, boxShadow: '0px 8px 20px rgba(76, 175, 80, 0.4)' }}>
+                    {!cashDrawer ? "ABRE LA CAJA PARA COBRAR" : `COBRAR $${grandTotal.toFixed(2)}`}
+                  </Button>
+              </Box>
 
-          </Paper>
-        </Grid>
+            </Paper>
+          </Grid>
+        )}
       </Grid>
        
       <Dialog open={openStartBox} PaperProps={{ sx: { borderRadius: 3, p: 2, minWidth: '350px' } }}>
@@ -553,7 +604,7 @@ export default function POS() {
                 <IconButton color="primary" onClick={() => setTempSplitWays(s => s + 1)} sx={{ border: '2px solid' }}><AddCircleOutline fontSize="large"/></IconButton>
             </Box>
             <Paper elevation={0} sx={{ p: 3, bgcolor: '#e1f5fe', borderRadius: 3 }}>
-                <Typography variant="body1" fontWeight="bold" color="text.secondary">Imprimir {tempSplitWays} tickets por:</Typography>
+                <Typography variant="body1" fontWeight="bold" color="text.secondary">Separar en {tempSplitWays} partes:</Typography>
                 <Typography variant="h2" color="primary" fontWeight="900">${(grandTotal / tempSplitWays).toFixed(2)}</Typography>
             </Paper>
         </DialogContent>

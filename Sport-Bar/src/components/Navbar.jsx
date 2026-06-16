@@ -18,8 +18,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext'; 
 import logoImg from '../assets/logo.png'; 
-
-// Colores de la marca
 const goldColor = '#D4AF37'; 
 const darkColor = '#111111'; 
 
@@ -127,17 +125,12 @@ const Navbar = () => {
     <>
       <AppBar position="fixed" elevation={4} sx={{ background: darkColor, color: '#fff', top: 0, left: 0, right: 0, width: '100%', zIndex: 1200, borderBottom: `2px solid ${goldColor}` }}>
         <Container maxWidth="xl">
-          {/* Se añade position relative y flex distribuidor */}
           <Toolbar disableGutters sx={{ minHeight: '64px', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}> 
-            
-            {/* BOTÓN HAMBURGUESA (Alineado a la izquierda en móvil) */}
             <Box sx={{ display: { xs: 'flex', md: 'none' }, width: '48px' }}>
               <IconButton color="inherit" onClick={handleDrawerToggle}>
                 <MenuIcon />
               </IconButton>
             </Box>
-
-            {/* LOGO DE LA MARCA (Izquierda en Desktop, Centro absoluto en Móvil) */}
             <Box 
               component={RouterLink} 
               to="/" 
@@ -166,7 +159,6 @@ const Navbar = () => {
               />
             </Box>
             
-            {/* MENÚ DE ENLACES (Perfectamente centrado en Escritorio) */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, justifyContent: 'center', gap: 1.5 }}>
               {menuItems.map((item) => {
                 if (item.isDropdown) {
@@ -186,7 +178,6 @@ const Navbar = () => {
                     </Box>
                   );
                 }
-
                 const isActive = location.pathname === item.path;
                 return (
                   <Button key={item.text} component={RouterLink} to={item.path} startIcon={item.icon}
@@ -198,7 +189,6 @@ const Navbar = () => {
               })}
             </Box>
 
-            {/* SECCIÓN USUARIO / CONFIGURACIÓN (Alineado a la derecha en ambos entornos) */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, zIndex: 10 }}>
               <IconButton onClick={toggleTheme} color="inherit" sx={{ mr: 0.5, display: { xs: 'none', md: 'flex' } }}>
                 {mode === 'dark' ? <Brightness7 sx={{ color: goldColor }} /> : <Brightness4 />}
